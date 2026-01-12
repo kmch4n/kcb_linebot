@@ -1,0 +1,30 @@
+# AI
+.claude/
+CLAUDE.md
+
+# Data
+notes/
+
+# Environment
+.env
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Logs
+*.log
+/tmp/
+
+# Mac OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
