@@ -193,8 +193,56 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
         to_stop: 目的地バス停名
     """
     try:
+        from datetime import datetime
+
         day_type = get_day_type()
         routes = search_routes(from_stop, to_stop, day_type=day_type)
+
+        logger.info(f"[DEBUG] Search routes returned {len(routes) if routes else 0} results")
+
+        # 終バス判定: 結果が0件、または最初のバスが2時間以上先の場合
+        is_last_bus_passed = False
+
+        if not routes or len(routes) == 0:
+            # 結果が0件の場合、終バス後の可能性があるため翌日始バスを検索
+            # 現在時刻が21時以降または深夜5時以前の場合、始バスを検索
+            now = datetime.now()
+            current_hour = now.hour
+
+            if current_hour >= 21 or current_hour < 5:
+                logger.info(f"No routes found at {now.strftime('%H:%M')}. Searching for first bus...")
+
+                # 翌日の始バスを検索（05:00から検索）
+                routes = search_routes(from_stop, to_stop, day_type=day_type, current_time="05:00")
+
+                # 始バス検索でも結果がない場合は、真に経路が存在しない
+                if routes and len(routes) > 0:
+                    is_last_bus_passed = True
+                else:
+                    logger.info("No routes found even for first bus. Route may not exist.")
+                    is_last_bus_passed = False
+
+        elif routes and len(routes) > 0:
+            # 結果がある場合、最初のバスの出発時刻をチェック
+            first_departure_time = routes[0].get("departure_time", "")
+            try:
+                now = datetime.now()
+                dep_time = datetime.strptime(first_departure_time, "%H:%M:%S")
+                dep_datetime = now.replace(hour=dep_time.hour, minute=dep_time.minute, second=dep_time.second)
+
+                # 出発時刻が過去の場合、翌日と見なす
+                if dep_datetime < now:
+                    from datetime import timedelta
+                    dep_datetime += timedelta(days=1)
+
+                minutes_until_departure = int((dep_datetime - now).total_seconds() / 60)
+
+                # 2時間（120分）以上先の場合は終バス後と判定
+                if minutes_until_departure > 120:
+                    is_last_bus_passed = True
+                    logger.info(f"Last bus has passed. Next bus in {minutes_until_departure} minutes")
+            except:
+                pass  # 時刻解析エラーは無視
 
         # Phase 5: 各ルートのリアルタイム情報を取得
         for route in routes:
@@ -213,7 +261,17 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
 
         # Phase 3: Flex Message返信
         flex_contents = create_bus_routes_flex(routes, from_stop, to_stop)
-        send_flex_reply(event, "バス検索結果", flex_contents)
+
+        # 終バス後の場合、テキストメッセージと一緒に返信
+        if is_last_bus_passed:
+            send_text_and_flex_reply(
+                event,
+                "🌙 本日のバス運行は終了しています。\n翌日の始バスをご案内します。",
+                "バス検索結果",
+                flex_contents
+            )
+        else:
+            send_flex_reply(event, "バス検索結果", flex_contents)
 
     except BusAPIError as e:
         logger.error(f"Bus API error: {e}")
@@ -411,3 +469,32 @@ def send_flex_reply(event, alt_text: str, contents: dict):
         logger.info(f"Replied Flex to {event.source.user_id}")
     except Exception as e:
         logger.error(f"Failed to reply Flex: {e}")
+
+
+def send_text_and_flex_reply(event, text: str, alt_text: str, flex_contents: dict):
+    """
+    テキストメッセージとFlex Messageを同時に返信
+
+    Args:
+        event: LINE Webhookイベント
+        text: テキストメッセージ
+        alt_text: Flex Messageの代替テキスト
+        flex_contents: Flex Messageの内容（辞書形式）
+    """
+    try:
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            text_message = TextMessage(text=text)
+            flex_message = FlexMessage(
+                alt_text=alt_text,
+                contents=FlexContainer.from_dict(flex_contents)
+            )
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[text_message, flex_message]
+                )
+            )
+        logger.info(f"Replied Text+Flex to {event.source.user_id}")
+    except Exception as e:
+        logger.error(f"Failed to reply Text+Flex: {e}")
