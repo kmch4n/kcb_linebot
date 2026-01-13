@@ -207,7 +207,8 @@ def search_nearby_stops(
 
 def get_trip_location(
     trip_id: str,
-    time: Optional[str] = None
+    time: Optional[str] = None,
+    departure_stop_id: Optional[str] = None
 ) -> Optional[Dict]:
     """
     バスの現在位置を推定（時刻表ベース）
@@ -215,6 +216,7 @@ def get_trip_location(
     Args:
         trip_id: トリップID（例: "00900_01001_4048"）
         time: 参照時刻（HH:MM or HH:MM:SS、Noneの場合は現在時刻）
+        departure_stop_id: ユーザーの乗車予定バス停ID（前3つの停留所情報を取得する場合）
 
     Returns:
         位置情報の辞書、またはNone（エラー時）
@@ -226,7 +228,9 @@ def get_trip_location(
             "message": str,
             "from_stop": {"stop_id": str, "stop_name": str, "time": str},
             "to_stop": {"stop_id": str, "stop_name": str, "time": str},
-            "estimated_arrival_minutes": int
+            "estimated_arrival_minutes": int,
+            "previous_stops": [{"stop_id": str, "stop_name": str, "time": str}, ...],
+            "boarding_stop": {"stop_id": str, "stop_name": str, "time": str}
         }
 
     Raises:
@@ -238,6 +242,9 @@ def get_trip_location(
 
     if time:
         params["time"] = time
+
+    if departure_stop_id:
+        params["departure_stop_id"] = departure_stop_id
 
     try:
         response = requests.get(url, headers=headers, params=params, timeout=API_TIMEOUT)
@@ -287,121 +294,105 @@ def convert_location_to_realtime_info(
     route: Dict
 ) -> Optional[Dict]:
     """
-    API位置情報をFlex Message用のrealtime_info形式に変換
+    API位置情報をFlex Message用のrealtime_info形式に変換（縦リスト形式）
 
     Args:
         location_data: get_trip_location()から取得した位置情報
-        route: 検索結果のroute情報（departure_time, departure_stop_id, arrival_stop_id含む）
+        route: 検索結果のroute情報（departure_time, departure_stop_id含む）
 
     Returns:
-        realtime_info形式の辞書、または None（表示不要の場合）
+        realtime_info形式の辞書:
+        {
+            "previous_stops": [{"stop_name": str, "time": str}, ...],
+            "boarding_stop": {"stop_name": str, "time": str},
+            "bus_position": {
+                "type": "between" | "at_stop",
+                "current_stop": str,  # 停車中の場合
+                "from_stop": str,     # 走行中の場合
+                "to_stop": str        # 走行中の場合
+            } または None
+        }
     """
     if not location_data or not location_data.get("success"):
         return None
 
+    # 前3つの停留所リストを取得
+    previous_stops_data = location_data.get("previous_stops") or []
+    boarding_stop_data = location_data.get("boarding_stop")
+
+    # 停留所リストがない場合は表示しない
+    if not previous_stops_data or not boarding_stop_data:
+        return None
+
+    # 停留所リストをFlex Message用に変換
+    previous_stops = []
+    for stop in previous_stops_data:
+        previous_stops.append({
+            "stop_name": stop.get("stop_name", ""),
+            "time": stop.get("time", "")[:5]  # HH:MM形式に変換
+        })
+
+    boarding_stop = {
+        "stop_name": boarding_stop_data.get("stop_name", ""),
+        "time": boarding_stop_data.get("time", "")[:5]
+    }
+
+    # バスの現在位置を取得
     status = location_data.get("status")
     from_stop = location_data.get("from_stop") or {}
     to_stop = location_data.get("to_stop") or {}
-    message = location_data.get("message", "")
 
-    # ユーザーの乗車区間情報
-    user_departure_stop_id = route.get("departure_stop_id")
-    departure_time = route.get("departure_time", "")
+    # バスが前3つの停留所の範囲内にいるかチェック
+    bus_position = None
 
-    # 出発時刻までの時間を計算
-    try:
-        from datetime import datetime
-        now = datetime.now()
-        dep_time = datetime.strptime(departure_time, "%H:%M:%S")
-        dep_datetime = now.replace(hour=dep_time.hour, minute=dep_time.minute, second=dep_time.second)
+    if status == "between_stops" and from_stop and to_stop:
+        from_stop_id = from_stop.get("stop_id")
+        from_stop_name = from_stop.get("stop_name")
 
-        # 出発時刻が過去の場合、翌日と見なす
-        if dep_datetime < now:
-            from datetime import timedelta
-            dep_datetime += timedelta(days=1)
+        # 前3つのstop_idとstop_nameリスト
+        previous_stop_ids = [stop.get("stop_id") for stop in previous_stops_data]
+        previous_stop_names = [stop.get("stop_name") for stop in previous_stops_data]
 
-        minutes_until_departure = int((dep_datetime - now).total_seconds() / 60)
-    except:
-        # 時刻解析エラー時は表示しない
-        return None
+        # バスが何つ前にいるか計算
+        stops_away = None
+        if from_stop_name in previous_stop_names:
+            idx = previous_stop_names.index(from_stop_name)
+            stops_away = len(previous_stops) - idx  # 3 - 0 = 3, 3 - 1 = 2, 3 - 2 = 1
+        elif from_stop_id in previous_stop_ids:
+            idx = previous_stop_ids.index(from_stop_id)
+            stops_away = len(previous_stops) - idx
 
-    # バスの現在位置が乗車区間に関連しているかチェック
-    current_stop_id = from_stop.get("stop_id")
-    next_stop_id = to_stop.get("stop_id") if to_stop else None
-
-    # ステータス変換ロジック
-    if status == "arrived":
-        # 到着済み → リアルタイム情報を表示しない
-        return None
+        # バスが前3つの範囲内にいる場合
+        if stops_away is not None:
+            bus_position = {
+                "type": "between",
+                "from_stop": from_stop_name,
+                "to_stop": to_stop.get("stop_name"),
+                "stops_away": stops_away
+            }
+        else:
+            # バスが遠い（4つ以上前）
+            bus_position = {
+                "type": "far",
+                "stops_away": 4  # 4つ以上前
+            }
 
     elif status == "not_started":
-        # 未出発 → 出発時刻が近い場合のみ表示
-        if minutes_until_departure <= 1:
-            return {
-                "status": "approaching",
-                "current_stop": None,
-                "next_stop": None,
-                "estimated_arrival_minutes": minutes_until_departure,
-                "message": "まもなく出発します"
-            }
-        elif minutes_until_departure <= 10:
-            return {
-                "status": "on_time",
-                "current_stop": None,
-                "next_stop": None,
-                "estimated_arrival_minutes": minutes_until_departure,
-                "message": f"まもなく発車します（{minutes_until_departure}分後）"
-            }
-        return None
+        # 未出発の場合、バスはまだ始発にいる（遠い）
+        bus_position = {
+            "type": "far",
+            "stops_away": 4  # 4つ以上前
+        }
 
-    elif status == "between_stops":
-        # バスが乗車区間に関連しているかチェック
-        # 現在位置が出発地より前 → まだ来ていない（出発時刻で判定）
-        if current_stop_id != user_departure_stop_id and next_stop_id != user_departure_stop_id:
-            # 出発地を通過していない場合、出発時刻が10分以内なら表示
-            if minutes_until_departure <= 1:
-                return {
-                    "status": "approaching",
-                    "current_stop": from_stop.get("stop_name"),
-                    "next_stop": to_stop.get("stop_name") if to_stop else None,
-                    "estimated_arrival_minutes": minutes_until_departure,
-                    "message": "まもなく到着します"
-                }
-            elif minutes_until_departure <= 10:
-                return {
-                    "status": "on_time",
-                    "current_stop": from_stop.get("stop_name"),
-                    "next_stop": to_stop.get("stop_name") if to_stop else None,
-                    "estimated_arrival_minutes": minutes_until_departure,
-                    "message": message
-                }
-            return None
+    # バスが遠い場合でもbus_positionを設定（Noneではなく）
+    if bus_position is None:
+        bus_position = {
+            "type": "far",
+            "stops_away": 4  # 4つ以上前
+        }
 
-        # バスが出発地付近にいる場合 → 接近中
-        if minutes_until_departure <= 1:
-            return {
-                "status": "approaching",
-                "current_stop": from_stop.get("stop_name"),
-                "next_stop": to_stop.get("stop_name") if to_stop else None,
-                "estimated_arrival_minutes": minutes_until_departure,
-                "message": "まもなく到着します"
-            }
-        elif minutes_until_departure <= 3:
-            return {
-                "status": "approaching",
-                "current_stop": from_stop.get("stop_name"),
-                "next_stop": to_stop.get("stop_name") if to_stop else None,
-                "estimated_arrival_minutes": minutes_until_departure,
-                "message": message
-            }
-        elif minutes_until_departure <= 10:
-            return {
-                "status": "on_time",
-                "current_stop": from_stop.get("stop_name"),
-                "next_stop": to_stop.get("stop_name") if to_stop else None,
-                "estimated_arrival_minutes": minutes_until_departure,
-                "message": message
-            }
-        return None
-
-    return None
+    return {
+        "previous_stops": previous_stops,
+        "boarding_stop": boarding_stop,
+        "bus_position": bus_position
+    }

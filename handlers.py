@@ -228,14 +228,16 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
             try:
                 now = datetime.now()
                 dep_time = datetime.strptime(first_departure_time, "%H:%M:%S")
-                dep_datetime = now.replace(hour=dep_time.hour, minute=dep_time.minute, second=dep_time.second)
-
-                # 出発時刻が過去の場合、翌日と見なす
-                if dep_datetime < now:
-                    from datetime import timedelta
-                    dep_datetime += timedelta(days=1)
+                dep_datetime = now.replace(hour=dep_time.hour, minute=dep_time.minute, second=0)
 
                 minutes_until_departure = int((dep_datetime - now).total_seconds() / 60)
+
+                # 出発時刻が30分以上過去の場合、翌日と見なす
+                # （数秒～数分の誤差では翌日扱いにしない）
+                if minutes_until_departure < -30:
+                    from datetime import timedelta
+                    dep_datetime += timedelta(days=1)
+                    minutes_until_departure = int((dep_datetime - now).total_seconds() / 60)
 
                 # 2時間（120分）以上先の場合は終バス後と判定
                 if minutes_until_departure > 120:
@@ -247,9 +249,10 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
         # Phase 5: 各ルートのリアルタイム情報を取得
         for route in routes:
             trip_id = route.get("trip_id")
+            departure_stop_id = route.get("departure_stop_id")
             if trip_id:
                 # バスの現在位置を取得（時刻表ベース）
-                location_data = get_trip_location(trip_id)
+                location_data = get_trip_location(trip_id, departure_stop_id=departure_stop_id)
 
                 # Flex Message用のrealtime_info形式に変換
                 realtime_info = convert_location_to_realtime_info(location_data, route)

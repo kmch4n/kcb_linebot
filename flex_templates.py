@@ -58,9 +58,11 @@ def create_single_route_bubble(
         Bubble構造
     """
     route_name = route.get("route_name", "不明")
+    headsign = route.get("headsign", "")
     dep_time = format_time(route.get("departure_time", ""))
     arr_time = format_time(route.get("arrival_time", ""))
     travel_time = route.get("travel_time_minutes", 0)
+    stops_count = route.get("stops_count", 0)
     dep_stop_desc = route.get("departure_stop_desc", from_stop)
     arr_stop_desc = route.get("arrival_stop_desc", to_stop)
 
@@ -73,11 +75,11 @@ def create_single_route_bubble(
     return {
         "type": "bubble",
         "size": "mega",
-        "header": create_header(route_name, index, header_color),
+        "header": create_header(route_name, index, header_color, headsign),
         "body": create_body(
             dep_time, arr_time, travel_time,
             dep_stop_desc, arr_stop_desc,
-            realtime_info
+            realtime_info, stops_count
         ),
         "footer": create_footer(),
         "styles": {
@@ -88,21 +90,35 @@ def create_single_route_bubble(
     }
 
 
-def create_header(route_name: str, index: int, color: str) -> Dict:
+def create_header(route_name: str, index: int, color: str, headsign: str = "") -> Dict:
     """ヘッダー部分を生成"""
+    # コンテンツリスト
+    contents = [
+        {
+            "type": "text",
+            "text": f"{index}. 🚌 {route_name}",
+            "size": "md",
+            "weight": "bold",
+            "color": "#ffffff",
+            "wrap": True,
+        }
+    ]
+
+    # 行先がある場合は2行目として追加
+    if headsign:
+        contents.append({
+            "type": "text",
+            "text": f"→ {headsign}",
+            "size": "sm",
+            "color": "#ffffff",
+            "wrap": True,
+            "margin": "xs",
+        })
+
     return {
         "type": "box",
-        "layout": "horizontal",
-        "contents": [
-            {
-                "type": "text",
-                "text": f"{index}. 🚌 {route_name}",
-                "size": "lg",
-                "weight": "bold",
-                "color": "#ffffff",
-                "flex": 1,
-            }
-        ],
+        "layout": "vertical",
+        "contents": contents,
         "paddingAll": "12px",
         "backgroundColor": color,
     }
@@ -114,7 +130,8 @@ def create_body(
     travel_time: int,
     dep_stop_desc: str,
     arr_stop_desc: str,
-    realtime_info: Optional[Dict] = None
+    realtime_info: Optional[Dict] = None,
+    stops_count: int = 0
 ) -> Dict:
     """ボディ部分を生成"""
 
@@ -136,8 +153,8 @@ def create_body(
         "color": "#404040",
     })
 
-    # 所要時間
-    contents.append(create_travel_time_box(travel_time))
+    # 所要時間・停車駅数
+    contents.append(create_travel_time_box(travel_time, stops_count))
 
     # セパレータ
     contents.append({
@@ -234,7 +251,7 @@ def create_stop_info_box(
                     {
                         "type": "text",
                         "text": f"📍 {stop_desc}",
-                        "size": "sm",
+                        "size": "xxs",
                         "color": "#e0e0e0",
                         "margin": "xs",
                         "wrap": True,
@@ -249,19 +266,25 @@ def create_stop_info_box(
     }
 
 
-def create_travel_time_box(travel_time: int) -> Dict:
-    """所要時間ボックス"""
+def create_travel_time_box(travel_time: int, stops_count: int = 0) -> Dict:
+    """所要時間・停車駅数ボックス"""
+    # テキストを構築
+    text = f"↓ 所要時間: {travel_time}分"
+    if stops_count > 0:
+        text += f" • {stops_count}停留所"
+
     return {
         "type": "box",
         "layout": "horizontal",
         "contents": [
             {
                 "type": "text",
-                "text": f"↓ 所要時間: {travel_time}分",
+                "text": text,
                 "size": "md",
                 "color": "#ffffff",
                 "align": "center",
                 "weight": "bold",
+                "wrap": True,
             },
         ],
         "margin": "md",
@@ -271,78 +294,139 @@ def create_travel_time_box(travel_time: int) -> Dict:
 
 def create_realtime_info_box(realtime_info: Dict) -> Dict:
     """
-    リアルタイム情報ボックス (Phase 5実装)
+    リアルタイム情報ボックス - 縦リスト形式でバス停を表示
 
     Args:
         realtime_info: {
-            "status": "approaching" | "on_time",
-            "current_stop": "河原町五条",
-            "next_stop": "四条河原町",
-            "estimated_arrival_minutes": 2,
-            "message": "河原町五条を出発 → 四条河原町に向かっています"
+            "previous_stops": [{"stop_name": str, "time": str}, ...],
+            "boarding_stop": {"stop_name": str, "time": str},
+            "bus_position": {
+                "type": "between" | "at_stop",
+                "current_stop": str,
+                "from_stop": str,
+                "to_stop": str
+            } または None
         }
     """
-    status = realtime_info.get("status", "on_time")
-    estimated_arrival = realtime_info.get("estimated_arrival_minutes", 0)
-    message = realtime_info.get("message", "")
+    previous_stops = realtime_info.get("previous_stops", [])
+    boarding_stop = realtime_info.get("boarding_stop", {})
+    bus_position = realtime_info.get("bus_position")
 
-    # ステータスバッジ
-    if status == "approaching":
-        status_text = "🔴 市バス接近中"
-        badge_color = "#F39C12"
-    else:
-        status_text = "✅ 定時運行"
-        badge_color = "#27AE60"
+    contents = []
 
-    contents = [
-        # ステータスバッジ
-        {
+    # バス位置の状態メッセージを追加
+    if bus_position:
+        bus_type = bus_position.get("type")
+        stops_away = bus_position.get("stops_away", 0)
+
+        status_message = ""
+        if bus_type == "between" and stops_away >= 1:
+            status_message = f"🚍 {stops_away}個前のバス停を出発しました"
+        elif bus_type == "at_stop" and stops_away >= 1:
+            status_message = f"🚍 {stops_away}つ前の停留所に停車中"
+        elif bus_type == "far":
+            status_message = f"バスはまだ遠くにいます。({stops_away}つ以上前の停留所)"
+
+        if status_message:
+            contents.append({
+                "type": "text",
+                "text": status_message,
+                "size": "xs",
+                "color": "#70AD47" if bus_type != "far" else "#a0a0a0",
+                "weight": "bold" if bus_type != "far" else "regular",
+                "margin": "none",
+            })
+            # セパレータ
+            contents.append({
+                "type": "separator",
+                "margin": "md",
+                "color": "#404040",
+            })
+
+    # 前3つの停留所を縦に表示
+    for i, stop in enumerate(previous_stops):
+        # 停留所名 + 時刻
+        contents.append({
             "type": "box",
             "layout": "horizontal",
             "contents": [
                 {
                     "type": "text",
-                    "text": status_text,
-                    "size": "sm",
-                    "weight": "bold",
-                    "color": "#ffffff",
-                    "align": "center",
-                }
+                    "text": stop.get("stop_name", ""),
+                    "size": "xxs",
+                    "color": "#e0e0e0",
+                    "flex": 1,
+                    "wrap": True,
+                },
+                {
+                    "type": "text",
+                    "text": stop.get("time", ""),
+                    "size": "xxs",
+                    "color": "#a0a0a0",
+                    "align": "end",
+                    "flex": 0,
+                },
             ],
-            "backgroundColor": badge_color,
-            "cornerRadius": "12px",
-            "paddingAll": "8px",
-        },
-    ]
-
-    # 位置情報メッセージ
-    if message:
-        contents.append({
-            "type": "text",
-            "text": message,
-            "size": "xs",
-            "color": "#e0e0e0",
-            "margin": "xs",
-            "wrap": True,
+            "margin": "none" if i == 0 else "sm",
         })
 
-    # 到着予定時間
-    if status == "approaching" and estimated_arrival > 0:
+        # 矢印（バス位置表示の可能性あり）
+        arrow_text = "↓"
+
+        # バスが停車中の場合
+        if bus_position and bus_position.get("type") == "at_stop":
+            if stop.get("stop_name") == bus_position.get("current_stop"):
+                arrow_text = "🚍️停車中"
+
+        # バスが走行中の場合（この停留所の次の停留所へ向かっている）
+        if bus_position and bus_position.get("type") == "between":
+            if stop.get("stop_name") == bus_position.get("from_stop"):
+                arrow_text = "↓  🚍️走行中"
+
         contents.append({
             "type": "text",
-            "text": f"あと約 {estimated_arrival} 分で到着予定",
-            "size": "xs",
-            "color": "#ffffff",
+            "text": arrow_text,
+            "size": "sm",
+            "color": "#70AD47" if "🚍️" in arrow_text else "#a0a0a0",
             "margin": "xs",
-            "weight": "bold",
+            "weight": "bold" if "🚍️" in arrow_text else "regular",
         })
+
+    # 乗車予定バス停
+    contents.append({
+        "type": "box",
+        "layout": "horizontal",
+        "contents": [
+            {
+                "type": "text",
+                "text": f"{boarding_stop.get('stop_name', '')}（乗車）",
+                "size": "xxs",
+                "color": "#ffffff",
+                "flex": 1,
+                "weight": "bold",
+                "wrap": True,
+            },
+            {
+                "type": "text",
+                "text": boarding_stop.get("time", ""),
+                "size": "xxs",
+                "color": "#e0e0e0",
+                "align": "end",
+                "flex": 0,
+            },
+        ],
+        "margin": "sm",
+        "backgroundColor": "#2c2c2c",
+        "cornerRadius": "4px",
+        "paddingAll": "8px",
+    })
 
     return {
         "type": "box",
         "layout": "vertical",
         "contents": contents,
         "margin": "md",
-        "backgroundColor": "#2c2c2c",
+        "backgroundColor": "#1f1f1f",
         "cornerRadius": "8px",
         "paddingAll": "12px",
     }
@@ -356,8 +440,8 @@ def create_footer() -> Dict:
         "contents": [
             {
                 "type": "text",
-                "text": "※表示時刻は目安です。最新情報はバス会社サイトでご確認ください。",
-                "size": "xs",
+                "text": "※時刻表ベースの目安です。バスは数分遅れることがあります。",
+                "size": "xxs",
                 "color": "#999999",
                 "align": "center",
                 "wrap": True,
