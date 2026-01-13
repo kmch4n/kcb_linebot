@@ -83,9 +83,9 @@ def create_single_route_bubble(
         ),
         "footer": create_footer(),
         "styles": {
-            "header": {"backgroundColor": header_color},
-            "body": {"backgroundColor": "#1a1a1a"},
-            "footer": {"backgroundColor": "#1a1a1a"},
+            "header": {"backgroundColor": "#f5f5f5"},
+            "body": {"backgroundColor": "#ffffff"},
+            "footer": {"backgroundColor": "#ffffff"},
         }
     }
 
@@ -99,7 +99,7 @@ def create_header(route_name: str, index: int, color: str, headsign: str = "") -
             "text": f"{index}. 🚌 {route_name}",
             "size": "md",
             "weight": "bold",
-            "color": "#ffffff",
+            "color": color,
             "wrap": True,
         }
     ]
@@ -110,7 +110,7 @@ def create_header(route_name: str, index: int, color: str, headsign: str = "") -
             "type": "text",
             "text": f"→ {headsign}",
             "size": "sm",
-            "color": "#ffffff",
+            "color": "#666666",
             "wrap": True,
             "margin": "xs",
         })
@@ -120,7 +120,7 @@ def create_header(route_name: str, index: int, color: str, headsign: str = "") -
         "layout": "vertical",
         "contents": contents,
         "paddingAll": "12px",
-        "backgroundColor": color,
+        "backgroundColor": "#f5f5f5",
     }
 
 
@@ -150,7 +150,7 @@ def create_body(
     contents.append({
         "type": "separator",
         "margin": "md",
-        "color": "#404040",
+        "color": "#e0e0e0",
     })
 
     # 所要時間・停車駅数
@@ -160,7 +160,7 @@ def create_body(
     contents.append({
         "type": "separator",
         "margin": "md",
-        "color": "#404040",
+        "color": "#e0e0e0",
     })
 
     # 到着情報エリア
@@ -177,7 +177,7 @@ def create_body(
         contents.append({
             "type": "separator",
             "margin": "md",
-            "color": "#404040",
+            "color": "#e0e0e0",
         })
         contents.append(create_realtime_info_box(realtime_info))
 
@@ -186,7 +186,7 @@ def create_body(
         "layout": "vertical",
         "contents": contents,
         "paddingAll": "12px",
-        "backgroundColor": "#1a1a1a",
+        "backgroundColor": "#ffffff",
     }
 
 
@@ -233,7 +233,7 @@ def create_stop_info_box(
                                 "type": "text",
                                 "text": f" {label}",
                                 "size": "xs",
-                                "color": "#e0e0e0",
+                                "color": "#666666",
                                 "flex": 0,
                             },
                             {
@@ -241,7 +241,7 @@ def create_stop_info_box(
                                 "text": time,
                                 "size": "xxl",
                                 "weight": "bold",
-                                "color": "#ffffff",
+                                "color": "#000000",
                                 "align": "end",
                                 "flex": 1,
                             },
@@ -252,7 +252,7 @@ def create_stop_info_box(
                         "type": "text",
                         "text": f"📍 {stop_desc}",
                         "size": "xxs",
-                        "color": "#e0e0e0",
+                        "color": "#666666",
                         "margin": "xs",
                         "wrap": True,
                     },
@@ -260,7 +260,7 @@ def create_stop_info_box(
             },
         ],
         "margin": "md",
-        "backgroundColor": "#2c2c2c",
+        "backgroundColor": "#f5f5f5",
         "cornerRadius": "8px",
         "paddingAll": "12px",
     }
@@ -280,8 +280,8 @@ def create_travel_time_box(travel_time: int, stops_count: int = 0) -> Dict:
             {
                 "type": "text",
                 "text": text,
-                "size": "md",
-                "color": "#ffffff",
+                "size": "sm",
+                "color": "#333333",
                 "align": "center",
                 "weight": "bold",
                 "wrap": True,
@@ -289,6 +289,8 @@ def create_travel_time_box(travel_time: int, stops_count: int = 0) -> Dict:
         ],
         "margin": "md",
         "paddingAll": "8px",
+        "backgroundColor": "#f0f0f0",
+        "cornerRadius": "4px",
     }
 
 
@@ -331,8 +333,8 @@ def create_realtime_info_box(realtime_info: Dict) -> Dict:
             contents.append({
                 "type": "text",
                 "text": status_message,
-                "size": "xs",
-                "color": "#70AD47" if bus_type != "far" else "#a0a0a0",
+                "size": "xxs",
+                "color": "#70AD47" if bus_type != "far" else "#666666",
                 "weight": "bold" if bus_type != "far" else "regular",
                 "margin": "none",
             })
@@ -340,7 +342,7 @@ def create_realtime_info_box(realtime_info: Dict) -> Dict:
             contents.append({
                 "type": "separator",
                 "margin": "md",
-                "color": "#404040",
+                "color": "#e0e0e0",
             })
 
     # 前3つの停留所を縦に表示
@@ -354,7 +356,7 @@ def create_realtime_info_box(realtime_info: Dict) -> Dict:
                     "type": "text",
                     "text": stop.get("stop_name", ""),
                     "size": "xxs",
-                    "color": "#e0e0e0",
+                    "color": "#333333",
                     "flex": 1,
                     "wrap": True,
                 },
@@ -362,7 +364,7 @@ def create_realtime_info_box(realtime_info: Dict) -> Dict:
                     "type": "text",
                     "text": stop.get("time", ""),
                     "size": "xxs",
-                    "color": "#a0a0a0",
+                    "color": "#666666",
                     "align": "end",
                     "flex": 0,
                 },
@@ -387,7 +389,7 @@ def create_realtime_info_box(realtime_info: Dict) -> Dict:
             "type": "text",
             "text": arrow_text,
             "size": "sm",
-            "color": "#70AD47" if "🚍️" in arrow_text else "#a0a0a0",
+            "color": "#70AD47" if "🚍️" in arrow_text else "#999999",
             "margin": "xs",
             "weight": "bold" if "🚍️" in arrow_text else "regular",
         })
@@ -401,7 +403,7 @@ def create_realtime_info_box(realtime_info: Dict) -> Dict:
                 "type": "text",
                 "text": f"{boarding_stop.get('stop_name', '')}（乗車）",
                 "size": "xxs",
-                "color": "#ffffff",
+                "color": "#000000",
                 "flex": 1,
                 "weight": "bold",
                 "wrap": True,
@@ -410,13 +412,13 @@ def create_realtime_info_box(realtime_info: Dict) -> Dict:
                 "type": "text",
                 "text": boarding_stop.get("time", ""),
                 "size": "xxs",
-                "color": "#e0e0e0",
+                "color": "#333333",
                 "align": "end",
                 "flex": 0,
             },
         ],
         "margin": "sm",
-        "backgroundColor": "#2c2c2c",
+        "backgroundColor": "#e0e0e0",
         "cornerRadius": "4px",
         "paddingAll": "8px",
     })
@@ -426,7 +428,7 @@ def create_realtime_info_box(realtime_info: Dict) -> Dict:
         "layout": "vertical",
         "contents": contents,
         "margin": "md",
-        "backgroundColor": "#1f1f1f",
+        "backgroundColor": "#f5f5f5",
         "cornerRadius": "8px",
         "paddingAll": "12px",
     }
@@ -448,7 +450,7 @@ def create_footer() -> Dict:
             },
         ],
         "paddingAll": "12px",
-        "backgroundColor": "#1a1a1a",
+        "backgroundColor": "#ffffff",
     }
 
 
@@ -476,19 +478,19 @@ def get_route_header_color(route_name: str) -> str:
     # 路線番号を抽出
     route_num = extract_route_number(route_name)
 
-    # 色分けマップ
+    # 色分けマップ（ライトモード用）
     if 1 <= route_num < 20:
-        return "#2d5016"    # 緑系 (1-19番)
+        return "#4CAF50"    # 明るい緑 (1-19番)
     elif 20 <= route_num < 40:
-        return "#1e3a5f"   # 青系 (20-39番)
+        return "#2196F3"   # 明るい青 (20-39番)
     elif 40 <= route_num < 60:
-        return "#5f2d11"   # 茶系 (40-59番)
+        return "#FF9800"   # オレンジ (40-59番)
     elif 60 <= route_num < 80:
-        return "#4a1e5f"   # 紫系 (60-79番)
+        return "#9C27B0"   # 明るい紫 (60-79番)
     elif 80 <= route_num < 300:
-        return "#5f1e1e"   # 赤系 (80番以上)
+        return "#F44336"   # 明るい赤 (80番以上)
     else:
-        return "#2d5016"  # デフォルト: 緑
+        return "#4CAF50"  # デフォルト: 明るい緑
 
 
 def extract_route_number(route_name: str) -> int:
@@ -531,13 +533,13 @@ def create_no_results_flex(from_stop: str, to_stop: str) -> Dict:
                 {
                     "type": "separator",
                     "margin": "md",
-                    "color": "#404040",
+                    "color": "#e0e0e0",
                 },
                 {
                     "type": "text",
                     "text": f"{from_stop} から {to_stop} への路線が見つかりませんでした。",
                     "size": "sm",
-                    "color": "#e0e0e0",
+                    "color": "#333333",
                     "wrap": True,
                     "margin": "md",
                 },
@@ -545,12 +547,12 @@ def create_no_results_flex(from_stop: str, to_stop: str) -> Dict:
                     "type": "text",
                     "text": "バス停名を確認して、もう一度お試しください。",
                     "size": "sm",
-                    "color": "#e0e0e0",
+                    "color": "#666666",
                     "wrap": True,
                     "margin": "xs",
                 },
             ],
             "paddingAll": "20px",
-            "backgroundColor": "#1a1a1a",
+            "backgroundColor": "#ffffff",
         },
     }
