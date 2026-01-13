@@ -28,6 +28,7 @@ from message_parser import (
     is_help_command,
     is_cancel_command,
 )
+from storage import add_search_history, get_top_searches
 from session import (
     get_user_session,
     start_waiting_for_destination_session,
@@ -195,6 +196,12 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
     try:
         from datetime import datetime
 
+        # ユーザーIDを取得
+        user_id = event.source.user_id
+
+        # 検索履歴を保存
+        add_search_history(user_id, from_stop, to_stop)
+
         day_type = get_day_type()
         routes = search_routes(from_stop, to_stop, day_type=day_type)
 
@@ -274,7 +281,7 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
                 flex_contents
             )
         else:
-            send_flex_reply(event, "バス検索結果", flex_contents)
+            send_flex_reply(event, "バス検索結果", flex_contents, user_id)
 
     except BusAPIError as e:
         logger.error(f"Bus API error: {e}")
@@ -447,14 +454,15 @@ def send_text_reply(event, text: str, quick_reply=None):
         logger.error(f"Failed to reply: {e}")
 
 
-def send_flex_reply(event, alt_text: str, contents: dict):
+def send_flex_reply(event, alt_text: str, contents: dict, user_id: str = None):
     """
-    Flex Messageを返信
+    Flex Messageを返信（トップ3検索のQuickReply付き）
 
     Args:
         event: LINE Webhookイベント
         alt_text: 代替テキスト
         contents: Flex Messageの内容（辞書形式）
+        user_id: ユーザーID（QuickReply用）
     """
     try:
         with ApiClient(configuration) as api_client:
@@ -463,6 +471,13 @@ def send_flex_reply(event, alt_text: str, contents: dict):
                 alt_text=alt_text,
                 contents=FlexContainer.from_dict(contents)
             )
+
+            # トップ3検索のQuickReplyを作成
+            if user_id:
+                quick_reply = create_top_searches_quick_reply(user_id)
+                if quick_reply:
+                    flex_message.quick_reply = quick_reply
+
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
@@ -501,3 +516,45 @@ def send_text_and_flex_reply(event, text: str, alt_text: str, flex_contents: dic
         logger.info(f"Replied Text+Flex to {event.source.user_id}")
     except Exception as e:
         logger.error(f"Failed to reply Text+Flex: {e}")
+
+
+def create_top_searches_quick_reply(user_id: str) -> QuickReply:
+    """
+    トップ3検索履歴のQuickReplyを作成
+
+    Args:
+        user_id: ユーザーID
+
+    Returns:
+        QuickReply object（履歴がない場合はNone）
+    """
+    top_searches = get_top_searches(user_id, limit=3)
+
+    if not top_searches:
+        return None
+
+    items = []
+    for search in top_searches:
+        from_stop = search.get("from_stop", "")
+        to_stop = search.get("to_stop", "")
+        count = search.get("count", 0)
+
+        # ラベル: "出発地→目的地 (回数)"
+        label = f"{from_stop}→{to_stop}"
+        if len(label) > 18:
+            # 長すぎる場合は短縮
+            label = f"{from_stop[:7]}→{to_stop[:7]}"
+
+        # 送信テキスト: "出発地 目的地"
+        text = f"{from_stop} {to_stop}"
+
+        items.append(
+            QuickReplyItem(
+                action=MessageAction(
+                    label=label,
+                    text=text
+                )
+            )
+        )
+
+    return QuickReply(items=items) if items else None
