@@ -1,4 +1,10 @@
 import logging
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+# タイムゾーン設定（日本標準時）
+JST = ZoneInfo("Asia/Tokyo")
+
 from linebot.v3.messaging import (
     ApiClient,
     MessagingApi,
@@ -64,6 +70,11 @@ def handle_text_message(event):
     # 2. ヘルプコマンド
     if is_help_command(user_message):
         send_help_message(event)
+        return
+
+    # 2.5. キャンセルコマンド（セッション外）
+    if is_cancel_command(user_message):
+        send_text_reply(event, "キャンセルしました。")
         return
 
     # 3. バス検索処理
@@ -205,8 +216,6 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
         to_stop: 目的地バス停名
     """
     try:
-        from datetime import datetime
-
         # ユーザーIDを取得
         user_id = event.source.user_id
 
@@ -224,14 +233,18 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
         if not routes or len(routes) == 0:
             # 結果が0件の場合、終バス後の可能性があるため翌日始バスを検索
             # 現在時刻が21時以降または深夜5時以前の場合、始バスを検索
-            now = datetime.now()
+            now = datetime.now(JST)
             current_hour = now.hour
 
             if current_hour >= 21 or current_hour < 5:
                 logger.info(f"No routes found at {now.strftime('%H:%M')}. Searching for first bus...")
 
+                # 翌日の日付とday_typeを計算
+                tomorrow = now + timedelta(days=1)
+                tomorrow_day_type = get_day_type(tomorrow)
+
                 # 翌日の始バスを検索（05:00から検索）
-                routes = search_routes(from_stop, to_stop, day_type=day_type, current_time="05:00")
+                routes = search_routes(from_stop, to_stop, day_type=tomorrow_day_type, current_time="05:00")
 
                 # 始バス検索でも結果がない場合は、真に経路が存在しない
                 if routes and len(routes) > 0:
@@ -244,7 +257,7 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
             # 結果がある場合、最初のバスの出発時刻をチェック
             first_departure_time = routes[0].get("departure_time", "")
             try:
-                now = datetime.now()
+                now = datetime.now(JST)
                 dep_time = datetime.strptime(first_departure_time, "%H:%M:%S")
                 dep_datetime = now.replace(hour=dep_time.hour, minute=dep_time.minute, second=0)
 
@@ -253,7 +266,6 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
                 # 出発時刻が30分以上過去の場合、翌日と見なす
                 # （数秒～数分の誤差では翌日扱いにしない）
                 if minutes_until_departure < -30:
-                    from datetime import timedelta
                     dep_datetime += timedelta(days=1)
                     minutes_until_departure = int((dep_datetime - now).total_seconds() / 60)
 
@@ -265,6 +277,8 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
                 pass  # 時刻解析エラーは無視
 
         # Phase 5: 各ルートのリアルタイム情報を取得
+        # routesがNoneの場合は空リストに正規化（Bug #1修正）
+        routes = routes or []
         for route in routes:
             trip_id = route.get("trip_id")
             departure_stop_id = route.get("departure_stop_id")

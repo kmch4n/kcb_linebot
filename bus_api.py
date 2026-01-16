@@ -1,8 +1,12 @@
 import requests
 from typing import Optional, List, Dict
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import logging
 from config import API_KEY, API_BASE_URL
+
+# タイムゾーン設定（日本標準時）
+JST = ZoneInfo("Asia/Tokyo")
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +19,19 @@ class BusAPIError(Exception):
     pass
 
 
-def get_day_type() -> str:
+def get_day_type(date: datetime = None) -> str:
     """
-    現在の曜日タイプを取得
+    曜日タイプを取得
+
+    Args:
+        date: 判定対象の日時（Noneの場合は現在時刻）
 
     Returns:
         "weekday", "saturday", "sunday" のいずれか
     """
-    weekday = datetime.now().weekday()
+    if date is None:
+        date = datetime.now(JST)
+    weekday = date.weekday()
     if weekday == 5:  # 土曜日
         return "saturday"
     elif weekday == 6:  # 日曜日
@@ -116,7 +125,7 @@ def search_routes(
 
     # 現在時刻を使用する場合
     if current_time is None:
-        current_time = datetime.now().strftime("%H:%M")
+        current_time = datetime.now(JST).strftime("%H:%M")
 
     payload = {
         "from_stop": from_stop,

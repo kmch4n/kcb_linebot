@@ -1,6 +1,10 @@
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import logging
+
+# タイムゾーン設定（日本標準時）
+JST = ZoneInfo("Asia/Tokyo")
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +30,7 @@ def start_waiting_for_destination_session(user_id: str, origin_stop: str) -> Non
     user_sessions[user_id] = {
         "state": "waiting_for_destination",
         "origin_stop": origin_stop,
-        "timestamp": datetime.now(),
+        "timestamp": datetime.now(JST),
         "fail_count": 0,
     }
     logger.info(f"Started destination session for {user_id}: {origin_stop}")
@@ -50,7 +54,7 @@ def get_user_session(user_id: str) -> Optional[Dict[str, Any]]:
 
     # タイムアウトチェック
     if timestamp:
-        elapsed = datetime.now() - timestamp
+        elapsed = datetime.now(JST) - timestamp
         if elapsed > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
             logger.info(f"Session timeout for {user_id}")
             clear_user_session(user_id)
@@ -99,7 +103,7 @@ def update_session_timestamp(user_id: str) -> None:
         user_id: LINEユーザーID
     """
     if user_id in user_sessions:
-        user_sessions[user_id]["timestamp"] = datetime.now()
+        user_sessions[user_id]["timestamp"] = datetime.now(JST)
 
 
 def is_session_active(user_id: str) -> bool:
