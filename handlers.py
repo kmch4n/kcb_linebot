@@ -21,6 +21,7 @@ from bus_api import (
     search_nearby_stops,
     get_trip_location,
     convert_location_to_realtime_info,
+    validate_stop_exists,
     BusAPIError
 )
 from message_parser import (
@@ -77,7 +78,17 @@ def handle_text_message(event):
             execute_bus_search(event, from_stop, to_stop)
             return
         elif from_stop:
-            # 部分的な入力 → セッション開始
+            # 部分的な入力 → バス停の存在を確認してからセッション開始
+            try:
+                if not validate_stop_exists(from_stop):
+                    send_text_reply(event, f"⚠️ 停留所「{from_stop}」が見つかりません。\n\n正しいバス停名を入力してください。")
+                    return
+            except BusAPIError as e:
+                logger.error(f"Error validating stop: {e}")
+                send_text_reply(event, f"⚠️ {str(e)}")
+                return
+
+            # バス停が存在する場合、セッション開始
             start_waiting_for_destination_session(user_id, from_stop)
             send_destination_prompt(event, user_id)
             return
@@ -372,6 +383,22 @@ def handle_destination_input(event, session: dict):
             return
 
         send_text_reply(event, "目的地のバス停名を入力してください。\n（キャンセルする場合は「キャンセル」と入力）")
+        return
+
+    # 目的地バス停の存在を確認
+    try:
+        if not validate_stop_exists(destination_stop):
+            fail_count = increment_fail_count(user_id)
+            if fail_count >= MAX_FAIL_COUNT:
+                clear_user_session(user_id)
+                send_text_reply(event, f"⚠️ 停留所「{destination_stop}」が見つかりません。\n\n検索を中止しました。最初からやり直してください。")
+                return
+
+            send_text_reply(event, f"⚠️ 停留所「{destination_stop}」が見つかりません。\n\n正しいバス停名を入力してください。")
+            return
+    except BusAPIError as e:
+        logger.error(f"Error validating destination stop: {e}")
+        send_text_reply(event, f"⚠️ {str(e)}")
         return
 
     # セッションクリアして検索実行

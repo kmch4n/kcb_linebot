@@ -71,6 +71,23 @@ def search_stops(query: str, limit: int = 5) -> Optional[List[Dict]]:
         raise BusAPIError("予期しないエラーが発生しました。")
 
 
+def validate_stop_exists(stop_name: str) -> bool:
+    """
+    バス停が存在するか確認
+
+    Args:
+        stop_name: バス停名
+
+    Returns:
+        存在する場合True、存在しない場合False
+
+    Raises:
+        BusAPIError: API通信エラー
+    """
+    stops = search_stops(stop_name, limit=1)
+    return stops is not None and len(stops) > 0
+
+
 def search_routes(
     from_stop: str,
     to_stop: str,
