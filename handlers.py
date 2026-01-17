@@ -35,6 +35,9 @@ from message_parser import (
     is_help_command,
     is_cancel_command,
     is_favorite_command,
+    is_favorite_register_only_command,
+    is_nearby_stops_command,
+    is_timetable_command,
     parse_favorite_command,
 )
 from storage import (
@@ -49,6 +52,7 @@ from storage import (
 from session import (
     get_user_session,
     start_waiting_for_destination_session,
+    start_waiting_for_favorite_route_session,
     clear_user_session,
     increment_fail_count,
     MAX_FAIL_COUNT,
@@ -71,11 +75,16 @@ def handle_text_message(event):
 
     logger.info(f"Received message from {user_id}: {user_message}")
 
-    # 1. セッション処理（目的地入力待ち）
+    # 1. セッション処理
     session = get_user_session(user_id)
-    if session and session.get("state") == "waiting_for_destination":
-        handle_destination_input(event, session)
-        return
+    if session:
+        state = session.get("state")
+        if state == "waiting_for_destination":
+            handle_destination_input(event, session)
+            return
+        elif state == "waiting_for_favorite_route":
+            handle_favorite_route_input(event, session)
+            return
 
     # 2. ヘルプコマンド
     if is_help_command(user_message):
@@ -87,7 +96,29 @@ def handle_text_message(event):
         send_text_reply(event, "キャンセルしました。")
         return
 
-    # 2.6. お気に入りコマンド
+    # 2.6. お気に入り登録のみ（ルートなし）
+    if is_favorite_register_only_command(user_message):
+        start_waiting_for_favorite_route_session(user_id)
+        send_text_reply(
+            event,
+            "⭐ お気に入りルートに登録します。\n\n"
+            "登録したいルートを送信してください。\n"
+            "例: 「四条河原町 京都駅」\n\n"
+            "（キャンセルする場合は「キャンセル」と入力）"
+        )
+        return
+
+    # 2.7. 周辺バス停検索コマンド
+    if is_nearby_stops_command(user_message):
+        send_nearby_stops_prompt(event)
+        return
+
+    # 2.8. 時刻表検索コマンド
+    if is_timetable_command(user_message):
+        send_timetable_not_implemented(event)
+        return
+
+    # 2.9. お気に入りコマンド（ルート付き）
     if is_favorite_command(user_message):
         parsed_fav = parse_favorite_command(user_message)
         if parsed_fav:
@@ -484,9 +515,125 @@ def send_help_message(event):
     send_text_reply(event, help_text)
 
 
+def send_nearby_stops_prompt(event):
+    """
+    位置情報送信を促すメッセージを送信
+
+    Args:
+        event: LINE Webhookイベント
+    """
+    send_text_reply(
+        event,
+        "📍 周辺のバス停を検索します。\n\n"
+        "LINEの「+」ボタンから「位置情報」を選択して、現在地を送信してください。"
+    )
+
+
+def send_timetable_not_implemented(event):
+    """
+    時刻表検索の未実装メッセージを送信
+
+    Args:
+        event: LINE Webhookイベント
+    """
+    send_text_reply(
+        event,
+        "⚠️ この機能はまだ作成していません。\n\n"
+        "今後のアップデートをお待ちください。"
+    )
+
+
 # ============================================================================
 # お気に入り機能
 # ============================================================================
+
+
+def handle_favorite_route_input(event, session: dict):
+    """
+    お気に入りルート入力を処理（waiting_for_favorite_route状態）
+
+    Args:
+        event: LINE Webhookイベント
+        session: ユーザーセッション情報
+    """
+    user_id = event.source.user_id
+    user_message = event.message.text
+
+    # キャンセルコマンド
+    if is_cancel_command(user_message):
+        clear_user_session(user_id)
+        send_text_reply(event, "キャンセルしました。")
+        return
+
+    # ルートとして解析
+    parsed = parse_bus_search_message(user_message)
+
+    if not parsed:
+        fail_count = increment_fail_count(user_id)
+        if fail_count >= MAX_FAIL_COUNT:
+            clear_user_session(user_id)
+            send_text_reply(event, "入力形式が正しくありません。最初からやり直してください。")
+            return
+        send_text_reply(
+            event,
+            "⚠️ 入力形式が正しくありません。\n\n"
+            "例: 「四条河原町 京都駅」\n"
+            "（キャンセルする場合は「キャンセル」と入力）"
+        )
+        return
+
+    from_stop = parsed.get("from_stop")
+    to_stop = parsed.get("to_stop")
+
+    # 出発地のみの場合
+    if not to_stop:
+        fail_count = increment_fail_count(user_id)
+        if fail_count >= MAX_FAIL_COUNT:
+            clear_user_session(user_id)
+            send_text_reply(event, "入力形式が正しくありません。最初からやり直してください。")
+            return
+        send_text_reply(
+            event,
+            "⚠️ 出発地と目的地の両方を入力してください。\n\n"
+            "例: 「四条河原町 京都駅」\n"
+            "（キャンセルする場合は「キャンセル」と入力）"
+        )
+        return
+
+    # バス停の存在確認
+    try:
+        if not validate_stop_exists(from_stop):
+            send_text_reply(event, f"⚠️ 停留所「{from_stop}」が見つかりません。")
+            return
+        if not validate_stop_exists(to_stop):
+            send_text_reply(event, f"⚠️ 停留所「{to_stop}」が見つかりません。")
+            return
+    except BusAPIError as e:
+        send_text_reply(event, f"⚠️ {str(e)}")
+        return
+
+    # セッションクリア
+    clear_user_session(user_id)
+
+    # お気に入り追加
+    success = add_favorite(user_id, from_stop, to_stop)
+    if success:
+        send_text_reply(
+            event,
+            f"⭐ お気に入りに登録しました！\n\n{from_stop} → {to_stop}"
+        )
+    else:
+        if is_favorite(user_id, from_stop, to_stop):
+            send_text_reply(
+                event,
+                f"⚠️ すでにお気に入りに登録されています。\n\n{from_stop} → {to_stop}"
+            )
+        else:
+            send_text_reply(
+                event,
+                f"⚠️ お気に入りは最大{MAX_FAVORITES}件までです。\n\n"
+                "不要なお気に入りを削除してから登録してください。"
+            )
 
 
 def handle_favorite_command(event, parsed_command: dict):

@@ -160,6 +160,50 @@ def is_favorite_command(text: str) -> bool:
     return any(text.startswith(kw) for kw in favorite_keywords)
 
 
+def is_favorite_register_only_command(text: str) -> bool:
+    """
+    「お気に入り登録」のみのコマンドかどうか判定（ルートなしで送信された場合）
+
+    Args:
+        text: 判定対象の文字列
+
+    Returns:
+        「お気に入り登録」のみの場合True
+    """
+    text = text.strip()
+    return text in ["お気に入り登録", "おきにいり登録"]
+
+
+def is_nearby_stops_command(text: str) -> bool:
+    """
+    周辺バス停検索コマンドかどうか判定
+
+    Args:
+        text: 判定対象の文字列
+
+    Returns:
+        周辺バス停検索コマンドの場合True
+    """
+    text = text.strip()
+    keywords = ["周辺バス停", "周辺バス停検索", "近くのバス停"]
+    return text in keywords
+
+
+def is_timetable_command(text: str) -> bool:
+    """
+    時刻表検索コマンドかどうか判定
+
+    Args:
+        text: 判定対象の文字列
+
+    Returns:
+        時刻表検索コマンドの場合True
+    """
+    text = text.strip()
+    keywords = ["時刻表", "時刻表検索"]
+    return text in keywords
+
+
 def parse_favorite_command(text: str) -> Optional[Dict[str, str]]:
     """
     お気に入りコマンドを解析

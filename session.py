@@ -36,6 +36,21 @@ def start_waiting_for_destination_session(user_id: str, origin_stop: str) -> Non
     logger.info(f"Started destination session for {user_id}: {origin_stop}")
 
 
+def start_waiting_for_favorite_route_session(user_id: str) -> None:
+    """
+    お気に入りルート入力待ちセッションを開始
+
+    Args:
+        user_id: LINEユーザーID
+    """
+    user_sessions[user_id] = {
+        "state": "waiting_for_favorite_route",
+        "timestamp": datetime.now(JST),
+        "fail_count": 0,
+    }
+    logger.info(f"Started favorite route session for {user_id}")
+
+
 def get_user_session(user_id: str) -> Optional[Dict[str, Any]]:
     """
     ユーザーのセッションを取得（タイムアウトチェック付き）
