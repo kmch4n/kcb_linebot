@@ -71,6 +71,7 @@ def _write_search_history(data: Dict):
                 f.seek(0)
                 f.truncate()
                 json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()  # Pythonバッファをフラッシュ
                 os.fsync(f.fileno())
             finally:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)

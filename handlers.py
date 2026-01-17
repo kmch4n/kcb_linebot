@@ -55,6 +55,7 @@ from session import (
     start_waiting_for_favorite_route_session,
     clear_user_session,
     increment_fail_count,
+    update_session_timestamp,
     MAX_FAIL_COUNT,
 )
 from flex_templates import create_bus_routes_flex
@@ -123,6 +124,17 @@ def handle_text_message(event):
         parsed_fav = parse_favorite_command(user_message)
         if parsed_fav:
             handle_favorite_command(event, parsed_fav)
+            return
+        else:
+            # 不完全なお気に入りコマンドに対するエラーメッセージ
+            send_text_reply(
+                event,
+                "⚠️ コマンドの形式が正しくありません。\n\n"
+                "【使用例】\n"
+                "• お気に入り一覧\n"
+                "• お気に入り登録 出発地 目的地\n"
+                "• お気に入り削除 番号"
+            )
             return
 
     # 3. バス検索処理
@@ -206,6 +218,22 @@ def handle_location_message(event):
         send_text_reply(event, "⚠️ エラーが発生しました。もう一度お試しください。")
 
 
+def truncate_quick_reply_label(text: str, max_length: int = 20) -> str:
+    """
+    Quick Replyラベルを指定長に切り詰める
+
+    Args:
+        text: 元のラベルテキスト
+        max_length: 最大文字数（デフォルト: 20、LINE Quick Reply制限）
+
+    Returns:
+        切り詰められたラベル
+    """
+    if len(text) <= max_length:
+        return text
+    return text[:max_length - 1] + "…"
+
+
 def create_nearby_stops_quick_reply(stops: list, max_items: int = 5) -> QuickReply:
     """
     周辺バス停情報からQuick Replyを生成
@@ -225,10 +253,16 @@ def create_nearby_stops_quick_reply(stops: list, max_items: int = 5) -> QuickRep
         stop_name = stop.get("stop_name", "不明")
         distance = stop.get("distance_meters", 0)
 
-        # ラベル: "バス停名 (距離m)"
-        label = f"{stop_name} ({int(distance)}m)"
+        # ラベル: "バス停名 (距離m)" - 20文字制限に対応
+        distance_str = f"({int(distance)}m)"
+        max_name_len = 20 - len(distance_str) - 1  # スペース分を引く
+        if len(stop_name) > max_name_len:
+            stop_name_display = stop_name[:max_name_len - 1] + "…"
+        else:
+            stop_name_display = stop_name
+        label = f"{stop_name_display} {distance_str}"
 
-        # 送信テキスト: バス停名のみ
+        # 送信テキスト: バス停名のみ（切り詰めない）
         # （距離情報は表示用で、検索には不要）
         text = stop_name
 
@@ -267,11 +301,12 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
         # ユーザーIDを取得
         user_id = event.source.user_id
 
-        # 検索履歴を保存
-        add_search_history(user_id, from_stop, to_stop)
-
         day_type = get_day_type()
         routes = search_routes(from_stop, to_stop, day_type=day_type)
+
+        # 検索成功時のみ履歴保存（API呼び出し成功後）
+        if routes:
+            add_search_history(user_id, from_stop, to_stop)
 
         logger.info(f"[DEBUG] Search routes returned {len(routes) if routes else 0} results")
 
@@ -317,8 +352,11 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
                     dep_datetime += timedelta(days=1)
                     minutes_until_departure = int((dep_datetime - now).total_seconds() / 60)
 
-                # 2時間（120分）以上先の場合は終バス後と判定
-                if minutes_until_departure > 120:
+                # 2時間（120分）以上先かつ夜間時間帯の場合のみ終バス後と判定
+                # （日中に2時間以上先のバスがある場合は終バス扱いしない）
+                current_hour = now.hour
+                is_night_time = current_hour >= 21 or current_hour < 5
+                if minutes_until_departure > 120 and is_night_time:
                     is_last_bus_passed = True
                     logger.info(f"Last bus has passed. Next bus in {minutes_until_departure} minutes")
             except:
@@ -426,6 +464,9 @@ def handle_destination_input(event, session: dict):
     user_id = event.source.user_id
     user_message = event.message.text
 
+    # セッションタイムスタンプを更新（タイムアウト防止）
+    update_session_timestamp(user_id)
+
     # キャンセルコマンド
     if is_cancel_command(user_message):
         clear_user_session(user_id)
@@ -506,6 +547,9 @@ def send_help_message(event):
         "• 四条河原町から京都駅\n"
         "• 四条河原町→京都駅\n\n"
         "出発地だけを入力すると、目的地を聞かれます。\n\n"
+        "【位置情報から検索】\n"
+        "📍 位置情報を送信すると、周辺のバス停から選択できます。\n"
+        "「周辺バス停」と入力しても案内が表示されます。\n\n"
         "【お気に入り機能】\n"
         "• お気に入り一覧\n"
         "• お気に入り登録 出発地 目的地\n"
@@ -558,6 +602,9 @@ def handle_favorite_route_input(event, session: dict):
     """
     user_id = event.source.user_id
     user_message = event.message.text
+
+    # セッションタイムスタンプを更新（タイムアウト防止）
+    update_session_timestamp(user_id)
 
     # キャンセルコマンド
     if is_cancel_command(user_message):

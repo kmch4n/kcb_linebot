@@ -390,12 +390,21 @@ def convert_location_to_realtime_info(
 
         # バスが前3つの範囲内にいる場合
         if stops_away is not None:
-            bus_position = {
-                "type": "between",
-                "from_stop": from_stop_name,
-                "to_stop": to_stop.get("stop_name"),
-                "stops_away": stops_away
-            }
+            if stops_away == 0:
+                # バスが乗車停留所に停車中
+                bus_position = {
+                    "type": "at_stop",
+                    "current_stop": from_stop_name,
+                    "stops_away": 0
+                }
+            else:
+                # バスが走行中（1〜3つ前）
+                bus_position = {
+                    "type": "between",
+                    "from_stop": from_stop_name,
+                    "to_stop": to_stop.get("stop_name"),
+                    "stops_away": stops_away
+                }
         else:
             # バスが遠い（4つ以上前）
             bus_position = {
