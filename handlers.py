@@ -34,8 +34,18 @@ from message_parser import (
     parse_bus_search_message,
     is_help_command,
     is_cancel_command,
+    is_favorite_command,
+    parse_favorite_command,
 )
-from storage import add_search_history, get_top_searches
+from storage import (
+    add_search_history,
+    get_top_searches,
+    add_favorite,
+    remove_favorite,
+    get_favorites,
+    is_favorite,
+    MAX_FAVORITES,
+)
 from session import (
     get_user_session,
     start_waiting_for_destination_session,
@@ -76,6 +86,13 @@ def handle_text_message(event):
     if is_cancel_command(user_message):
         send_text_reply(event, "キャンセルしました。")
         return
+
+    # 2.6. お気に入りコマンド
+    if is_favorite_command(user_message):
+        parsed_fav = parse_favorite_command(user_message)
+        if parsed_fav:
+            handle_favorite_command(event, parsed_fav)
+            return
 
     # 3. バス検索処理
     parsed = parse_bus_search_message(user_message)
@@ -458,9 +475,158 @@ def send_help_message(event):
         "• 四条河原町から京都駅\n"
         "• 四条河原町→京都駅\n\n"
         "出発地だけを入力すると、目的地を聞かれます。\n\n"
+        "【お気に入り機能】\n"
+        "• お気に入り一覧\n"
+        "• お気に入り登録 出発地 目的地\n"
+        "• お気に入り削除 番号\n\n"
         "※現在時刻をもとに検索します。"
     )
     send_text_reply(event, help_text)
+
+
+# ============================================================================
+# お気に入り機能
+# ============================================================================
+
+
+def handle_favorite_command(event, parsed_command: dict):
+    """
+    お気に入りコマンドを処理
+
+    Args:
+        event: LINE Webhookイベント
+        parsed_command: parse_favorite_command()の結果
+    """
+    user_id = event.source.user_id
+    action = parsed_command.get("action")
+
+    if action == "list":
+        # お気に入り一覧表示
+        favorites = get_favorites(user_id)
+        if not favorites:
+            send_text_reply(
+                event,
+                "⭐ お気に入りはまだ登録されていません。\n\n"
+                "登録方法:\n「お気に入り登録 出発地 目的地」"
+            )
+            return
+
+        lines = ["⭐ お気に入り一覧\n"]
+        for i, fav in enumerate(favorites, 1):
+            lines.append(f"{i}. {fav['from_stop']} → {fav['to_stop']}")
+        lines.append(f"\n({len(favorites)}/{MAX_FAVORITES}件)")
+        lines.append("\n削除: 「お気に入り削除 番号」")
+
+        # Quick Replyでお気に入り検索を提供
+        quick_reply = create_favorites_quick_reply(favorites)
+        send_text_reply(event, "\n".join(lines), quick_reply=quick_reply)
+
+    elif action == "add":
+        from_stop = parsed_command.get("from_stop")
+        to_stop = parsed_command.get("to_stop")
+
+        # バス停の存在を確認
+        try:
+            if not validate_stop_exists(from_stop):
+                send_text_reply(event, f"⚠️ 停留所「{from_stop}」が見つかりません。")
+                return
+            if not validate_stop_exists(to_stop):
+                send_text_reply(event, f"⚠️ 停留所「{to_stop}」が見つかりません。")
+                return
+        except BusAPIError as e:
+            send_text_reply(event, f"⚠️ {str(e)}")
+            return
+
+        # お気に入り追加
+        success = add_favorite(user_id, from_stop, to_stop)
+        if success:
+            send_text_reply(
+                event,
+                f"⭐ お気に入りに登録しました！\n\n{from_stop} → {to_stop}"
+            )
+        else:
+            # 上限か重複かを判定
+            if is_favorite(user_id, from_stop, to_stop):
+                send_text_reply(
+                    event,
+                    f"⚠️ すでにお気に入りに登録されています。\n\n{from_stop} → {to_stop}"
+                )
+            else:
+                send_text_reply(
+                    event,
+                    f"⚠️ お気に入りは最大{MAX_FAVORITES}件までです。\n\n"
+                    "不要なお気に入りを削除してから登録してください。\n"
+                    "「お気に入り一覧」で確認できます。"
+                )
+
+    elif action == "remove":
+        from_stop = parsed_command.get("from_stop")
+        to_stop = parsed_command.get("to_stop")
+
+        success = remove_favorite(user_id, from_stop, to_stop)
+        if success:
+            send_text_reply(
+                event,
+                f"⭐ お気に入りから削除しました。\n\n{from_stop} → {to_stop}"
+            )
+        else:
+            send_text_reply(
+                event,
+                f"⚠️ お気に入りに登録されていません。\n\n{from_stop} → {to_stop}"
+            )
+
+    elif action == "remove_by_index":
+        index = parsed_command.get("index")
+        favorites = get_favorites(user_id)
+
+        if 1 <= index <= len(favorites):
+            fav = favorites[index - 1]
+            success = remove_favorite(user_id, fav["from_stop"], fav["to_stop"])
+            if success:
+                send_text_reply(
+                    event,
+                    f"⭐ お気に入りから削除しました。\n\n{fav['from_stop']} → {fav['to_stop']}"
+                )
+            else:
+                send_text_reply(event, "⚠️ 削除に失敗しました。")
+        else:
+            send_text_reply(
+                event,
+                f"⚠️ 番号が正しくありません。1〜{len(favorites)}の番号を指定してください。"
+            )
+
+
+def create_favorites_quick_reply(favorites: list) -> QuickReply:
+    """
+    お気に入りルートのQuickReplyを作成
+
+    Args:
+        favorites: お気に入りルートのリスト
+
+    Returns:
+        QuickReply object
+    """
+    items = []
+
+    for fav in favorites[:5]:
+        from_stop = fav.get("from_stop", "")
+        to_stop = fav.get("to_stop", "")
+
+        # ラベル: "⭐出発地→目的地"
+        label = f"⭐{from_stop}→{to_stop}"
+        if len(label) > 18:
+            label = f"⭐{from_stop[:6]}→{to_stop[:6]}"
+
+        # 送信テキスト: "出発地 目的地"
+        text = f"{from_stop} {to_stop}"
+
+        items.append(
+            QuickReplyItem(
+                action=MessageAction(label=label, text=text)
+            )
+        )
+
+    return QuickReply(items=items) if items else None
 
 
 # ============================================================================
@@ -561,7 +727,7 @@ def send_text_and_flex_reply(event, text: str, alt_text: str, flex_contents: dic
 
 def create_top_searches_quick_reply(user_id: str) -> QuickReply:
     """
-    トップ3検索履歴のQuickReplyを作成
+    お気に入り（優先）+ トップ検索履歴のQuickReplyを作成
 
     Args:
         user_id: ユーザーID
@@ -569,33 +735,54 @@ def create_top_searches_quick_reply(user_id: str) -> QuickReply:
     Returns:
         QuickReply object（履歴がない場合はNone）
     """
-    top_searches = get_top_searches(user_id, limit=3)
-
-    if not top_searches:
-        return None
-
     items = []
-    for search in top_searches:
-        from_stop = search.get("from_stop", "")
-        to_stop = search.get("to_stop", "")
-        count = search.get("count", 0)
 
-        # ラベル: "出発地→目的地 (回数)"
-        label = f"{from_stop}→{to_stop}"
+    # 1. お気に入りを優先表示（最大3件）
+    favorites = get_favorites(user_id)
+    for fav in favorites[:3]:
+        from_stop = fav.get("from_stop", "")
+        to_stop = fav.get("to_stop", "")
+
+        # ラベル: "⭐出発地→目的地"
+        label = f"⭐{from_stop}→{to_stop}"
         if len(label) > 18:
-            # 長すぎる場合は短縮
-            label = f"{from_stop[:7]}→{to_stop[:7]}"
+            label = f"⭐{from_stop[:6]}→{to_stop[:6]}"
 
-        # 送信テキスト: "出発地 目的地"
         text = f"{from_stop} {to_stop}"
 
         items.append(
             QuickReplyItem(
-                action=MessageAction(
-                    label=label,
-                    text=text
-                )
+                action=MessageAction(label=label, text=text)
             )
         )
+
+    # 2. 検索履歴を追加（お気に入りと合わせて最大5件）
+    remaining_slots = 5 - len(items)
+    if remaining_slots > 0:
+        top_searches = get_top_searches(user_id, limit=remaining_slots + 3)
+
+        for search in top_searches:
+            if len(items) >= 5:
+                break
+
+            from_stop = search.get("from_stop", "")
+            to_stop = search.get("to_stop", "")
+
+            # お気に入りと重複する場合はスキップ
+            if is_favorite(user_id, from_stop, to_stop):
+                continue
+
+            # ラベル: "出発地→目的地"
+            label = f"{from_stop}→{to_stop}"
+            if len(label) > 18:
+                label = f"{from_stop[:7]}→{to_stop[:7]}"
+
+            text = f"{from_stop} {to_stop}"
+
+            items.append(
+                QuickReplyItem(
+                    action=MessageAction(label=label, text=text)
+                )
+            )
 
     return QuickReply(items=items) if items else None

@@ -141,3 +141,71 @@ def is_cancel_command(text: str) -> bool:
         "キャンセル", "きゃんせる", "やめる"
     ]
     return text in cancel_keywords
+
+
+def is_favorite_command(text: str) -> bool:
+    """
+    お気に入りコマンドかどうか判定
+
+    Args:
+        text: 判定対象の文字列
+
+    Returns:
+        お気に入りコマンドの場合True
+    """
+    text = text.strip()
+    favorite_keywords = [
+        "お気に入り", "おきにいり",
+    ]
+    return any(text.startswith(kw) for kw in favorite_keywords)
+
+
+def parse_favorite_command(text: str) -> Optional[Dict[str, str]]:
+    """
+    お気に入りコマンドを解析
+
+    対応パターン:
+    1. "お気に入り登録 四条河原町 京都駅" -> {"action": "add", "from_stop": "...", "to_stop": "..."}
+    2. "お気に入り一覧" -> {"action": "list"}
+    3. "お気に入り削除 四条河原町 京都駅" -> {"action": "remove", "from_stop": "...", "to_stop": "..."}
+    4. "お気に入り削除 1" -> {"action": "remove_by_index", "index": 1}
+
+    Args:
+        text: ユーザーのメッセージ
+
+    Returns:
+        解析結果の辞書、またはNone
+    """
+    text = text.strip()
+
+    # パターン1: "お気に入り登録 出発地 目的地"
+    match = re.match(r"^(?:お気に入り登録|おきにいり登録)\s+(.+?)\s+(.+?)$", text)
+    if match:
+        return {
+            "action": "add",
+            "from_stop": match.group(1).strip(),
+            "to_stop": match.group(2).strip()
+        }
+
+    # パターン2: "お気に入り一覧"
+    if text in ["お気に入り一覧", "おきにいり一覧", "お気に入り", "おきにいり"]:
+        return {"action": "list"}
+
+    # パターン3: "お気に入り削除 出発地 目的地"
+    match = re.match(r"^(?:お気に入り削除|おきにいり削除)\s+(.+?)\s+(.+?)$", text)
+    if match:
+        return {
+            "action": "remove",
+            "from_stop": match.group(1).strip(),
+            "to_stop": match.group(2).strip()
+        }
+
+    # パターン4: "お気に入り削除 番号"
+    match = re.match(r"^(?:お気に入り削除|おきにいり削除)\s+(\d+)$", text)
+    if match:
+        return {
+            "action": "remove_by_index",
+            "index": int(match.group(1))
+        }
+
+    return None

@@ -56,7 +56,7 @@ def search_stops(query: str, limit: int = 5) -> Optional[List[Dict]]:
     """
     url = f"{API_BASE_URL}/stops/search"
     headers = {"X-API-Key": API_KEY}
-    params = {"query": query, "limit": limit}
+    params = {"q": query, "limit": limit}
 
     try:
         response = requests.get(url, headers=headers, params=params, timeout=API_TIMEOUT)
