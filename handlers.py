@@ -42,7 +42,6 @@ from message_parser import (
 )
 from storage import (
     add_search_history,
-    get_top_searches,
     add_favorite,
     remove_favorite,
     get_favorites,
@@ -100,12 +99,17 @@ def handle_text_message(event):
     # 2.6. お気に入り登録のみ（ルートなし）
     if is_favorite_register_only_command(user_message):
         start_waiting_for_favorite_route_session(user_id)
+        # キャンセルボタンのみのQuick Reply
+        cancel_quick_reply = QuickReply(items=[
+            QuickReplyItem(action=MessageAction(label="キャンセル", text="キャンセル"))
+        ])
         send_text_reply(
             event,
             "⭐ お気に入りルートに登録します。\n\n"
             "登録したいルートを送信してください。\n"
             "例: 「四条河原町 京都駅」\n\n"
-            "（キャンセルする場合は「キャンセル」と入力）"
+            "（キャンセルする場合は「キャンセル」と入力）",
+            quick_reply=cancel_quick_reply
         )
         return
 
@@ -517,12 +521,8 @@ def send_destination_prompt(event, user_id: str):
         event: LINE Webhookイベント
         user_id: LINEユーザーID
     """
-    # Phase 1: シンプルなテキスト返信
-    # Phase 2: Quick Replyでお気に入り表示を追加予定
-    quick_reply_items = [
-        QuickReplyItem(action=MessageAction(label="キャンセル", text="キャンセル"))
-    ]
-    quick_reply = QuickReply(items=quick_reply_items)
+    # ヘルプ + お気に入り + キャンセルのQuickReply
+    quick_reply = create_default_quick_reply(user_id, include_cancel=True)
 
     send_text_reply(
         event,
@@ -556,7 +556,15 @@ def send_help_message(event):
         "• お気に入り削除 番号\n\n"
         "※現在時刻をもとに検索します。"
     )
-    send_text_reply(event, help_text)
+
+    # ヘルプ専用のQuick Reply（機能ボタン）
+    help_quick_reply = QuickReply(items=[
+        QuickReplyItem(action=MessageAction(label="⭐ お気に入り登録", text="お気に入り登録")),
+        QuickReplyItem(action=MessageAction(label="📍 周辺バス停", text="周辺バス停")),
+        QuickReplyItem(action=MessageAction(label="🕐 時刻表", text="時刻表")),
+    ])
+
+    send_text_reply(event, help_text, quick_reply=help_quick_reply)
 
 
 def send_nearby_stops_prompt(event):
@@ -615,6 +623,11 @@ def handle_favorite_route_input(event, session: dict):
     # ルートとして解析
     parsed = parse_bus_search_message(user_message)
 
+    # キャンセルボタンのみのQuick Reply（セッション継続中用）
+    cancel_qr = QuickReply(items=[
+        QuickReplyItem(action=MessageAction(label="キャンセル", text="キャンセル"))
+    ])
+
     if not parsed:
         fail_count = increment_fail_count(user_id)
         if fail_count >= MAX_FAIL_COUNT:
@@ -625,7 +638,8 @@ def handle_favorite_route_input(event, session: dict):
             event,
             "⚠️ 入力形式が正しくありません。\n\n"
             "例: 「四条河原町 京都駅」\n"
-            "（キャンセルする場合は「キャンセル」と入力）"
+            "（キャンセルする場合は「キャンセル」と入力）",
+            quick_reply=cancel_qr
         )
         return
 
@@ -643,20 +657,21 @@ def handle_favorite_route_input(event, session: dict):
             event,
             "⚠️ 出発地と目的地の両方を入力してください。\n\n"
             "例: 「四条河原町 京都駅」\n"
-            "（キャンセルする場合は「キャンセル」と入力）"
+            "（キャンセルする場合は「キャンセル」と入力）",
+            quick_reply=cancel_qr
         )
         return
 
     # バス停の存在確認
     try:
         if not validate_stop_exists(from_stop):
-            send_text_reply(event, f"⚠️ 停留所「{from_stop}」が見つかりません。")
+            send_text_reply(event, f"⚠️ 停留所「{from_stop}」が見つかりません。", quick_reply=cancel_qr)
             return
         if not validate_stop_exists(to_stop):
-            send_text_reply(event, f"⚠️ 停留所「{to_stop}」が見つかりません。")
+            send_text_reply(event, f"⚠️ 停留所「{to_stop}」が見つかりません。", quick_reply=cancel_qr)
             return
     except BusAPIError as e:
-        send_text_reply(event, f"⚠️ {str(e)}")
+        send_text_reply(event, f"⚠️ {str(e)}", quick_reply=cancel_qr)
         return
 
     # セッションクリア
@@ -828,21 +843,30 @@ def create_favorites_quick_reply(favorites: list) -> QuickReply:
 # ============================================================================
 
 
-def send_text_reply(event, text: str, quick_reply=None):
+def send_text_reply(event, text: str, quick_reply=None, include_default_qr: bool = True):
     """
     テキストメッセージを返信
 
     Args:
         event: LINE Webhookイベント
         text: 返信テキスト
-        quick_reply: QuickReplyオブジェクト（オプション）
+        quick_reply: QuickReplyオブジェクト（オプション、指定時は優先）
+        include_default_qr: デフォルトQuickReplyを含めるか（デフォルト: True）
     """
     try:
+        user_id = event.source.user_id
+
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             message = TextMessage(text=text)
+
+            # Quick Replyの設定
             if quick_reply:
+                # 明示的に指定された場合はそれを使用
                 message.quick_reply = quick_reply
+            elif include_default_qr:
+                # デフォルトQuickReplyを使用（ヘルプ + お気に入り）
+                message.quick_reply = create_default_quick_reply(user_id)
 
             line_bot_api.reply_message(
                 ReplyMessageRequest(
@@ -857,7 +881,7 @@ def send_text_reply(event, text: str, quick_reply=None):
 
 def send_flex_reply(event, alt_text: str, contents: dict, user_id: str = None):
     """
-    Flex Messageを返信（トップ3検索のQuickReply付き）
+    Flex Messageを返信（デフォルトQuickReply付き）
 
     Args:
         event: LINE Webhookイベント
@@ -866,6 +890,10 @@ def send_flex_reply(event, alt_text: str, contents: dict, user_id: str = None):
         user_id: ユーザーID（QuickReply用）
     """
     try:
+        # user_idが渡されていない場合はeventから取得
+        if not user_id:
+            user_id = event.source.user_id
+
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             flex_message = FlexMessage(
@@ -873,11 +901,8 @@ def send_flex_reply(event, alt_text: str, contents: dict, user_id: str = None):
                 contents=FlexContainer.from_dict(contents)
             )
 
-            # トップ3検索のQuickReplyを作成
-            if user_id:
-                quick_reply = create_top_searches_quick_reply(user_id)
-                if quick_reply:
-                    flex_message.quick_reply = quick_reply
+            # デフォルトQuickReplyを作成（ヘルプ + お気に入り）
+            flex_message.quick_reply = create_default_quick_reply(user_id)
 
             line_bot_api.reply_message(
                 ReplyMessageRequest(
@@ -919,57 +944,39 @@ def send_text_and_flex_reply(event, text: str, alt_text: str, flex_contents: dic
         logger.error(f"Failed to reply Text+Flex: {e}")
 
 
-def create_top_searches_quick_reply(user_id: str) -> QuickReply:
+def create_default_quick_reply(user_id: str = None, include_cancel: bool = False) -> QuickReply:
     """
-    お気に入り（優先）+ トップ検索履歴のQuickReplyを作成
+    デフォルトのQuickReplyを作成（ヘルプ + お気に入り）
 
     Args:
-        user_id: ユーザーID
+        user_id: ユーザーID（お気に入り表示用）
+        include_cancel: キャンセルボタンを含めるか
 
     Returns:
-        QuickReply object（履歴がない場合はNone）
+        QuickReply object
     """
     items = []
 
-    # 1. お気に入りを優先表示（最大3件）
-    favorites = get_favorites(user_id)
-    for fav in favorites[:3]:
-        from_stop = fav.get("from_stop", "")
-        to_stop = fav.get("to_stop", "")
-
-        # ラベル: "⭐出発地→目的地"
-        label = f"⭐{from_stop}→{to_stop}"
-        if len(label) > 18:
-            label = f"⭐{from_stop[:6]}→{to_stop[:6]}"
-
-        text = f"{from_stop} {to_stop}"
-
-        items.append(
-            QuickReplyItem(
-                action=MessageAction(label=label, text=text)
-            )
+    # 1. ヘルプボタン（最優先）
+    items.append(
+        QuickReplyItem(
+            action=MessageAction(label="❓ ヘルプ", text="ヘルプ")
         )
+    )
 
-    # 2. 検索履歴を追加（お気に入りと合わせて最大5件）
-    remaining_slots = 5 - len(items)
-    if remaining_slots > 0:
-        top_searches = get_top_searches(user_id, limit=remaining_slots + 3)
+    # 2. お気に入りを表示（最大4件）
+    if user_id:
+        favorites = get_favorites(user_id)
+        for fav in favorites[:4]:
+            from_stop = fav.get("from_stop", "")
+            to_stop = fav.get("to_stop", "")
 
-        for search in top_searches:
-            if len(items) >= 5:
-                break
-
-            from_stop = search.get("from_stop", "")
-            to_stop = search.get("to_stop", "")
-
-            # お気に入りと重複する場合はスキップ
-            if is_favorite(user_id, from_stop, to_stop):
-                continue
-
-            # ラベル: "出発地→目的地"
-            label = f"{from_stop}→{to_stop}"
-            if len(label) > 18:
-                label = f"{from_stop[:7]}→{to_stop[:7]}"
+            # ラベル: "⭐出発地→目的地" - 20文字制限に対応
+            label = f"⭐{from_stop}→{to_stop}"
+            if len(label) > 20:
+                # 出発地と目的地を均等に切り詰め
+                max_each = (20 - 3) // 2 - 1  # ⭐と→で3文字、…で1文字ずつ
+                label = f"⭐{from_stop[:max_each]}…→{to_stop[:max_each]}…"
 
             text = f"{from_stop} {to_stop}"
 
@@ -979,4 +986,12 @@ def create_top_searches_quick_reply(user_id: str) -> QuickReply:
                 )
             )
 
-    return QuickReply(items=items) if items else None
+    # 3. キャンセルボタン（セッション中など）
+    if include_cancel:
+        items.append(
+            QuickReplyItem(
+                action=MessageAction(label="キャンセル", text="キャンセル")
+            )
+        )
+
+    return QuickReply(items=items)
