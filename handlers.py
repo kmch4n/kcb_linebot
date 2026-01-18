@@ -168,9 +168,13 @@ def handle_text_message(event):
             send_destination_prompt(event, user_id)
             return
 
-    # 4. デフォルト: オウム返し
-    reply_text = f"あなたのメッセージ: {user_message}"
-    send_text_reply(event, reply_text)
+    # 4. デフォルト: 理解できなかったメッセージ
+    send_text_reply(
+        event,
+        "すみません、入力内容を理解できませんでした。\n\n"
+        "バス検索は「出発地 目的地」の形式で入力してください。\n"
+        "例: 「四条河原町 京都駅」"
+    )
 
 
 @handler.add(MessageEvent, message=LocationMessageContent)
