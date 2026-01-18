@@ -81,7 +81,7 @@ def create_single_route_bubble(
             dep_stop_desc, arr_stop_desc,
             realtime_info, stops_count
         ),
-        "footer": create_footer(from_stop, to_stop),
+        "footer": create_footer(),
         "styles": {
             "header": {"backgroundColor": "#f5f5f5"},
             "body": {"backgroundColor": "#ffffff"},
@@ -434,37 +434,14 @@ def create_realtime_info_box(realtime_info: Dict) -> Dict:
     }
 
 
-def create_footer(from_stop: str = None, to_stop: str = None) -> Dict:
+def create_footer() -> Dict:
     """
-    フッター部分を生成
-
-    Args:
-        from_stop: 出発地バス停名（逆方向ボタン用）
-        to_stop: 目的地バス停名（逆方向ボタン用）
+    フッター部分を生成（免責事項のみ）
 
     Returns:
         Footer box structure
     """
     contents = []
-
-    # 逆方向検索ボタン（from_stop, to_stopが両方ある場合のみ表示）
-    if from_stop and to_stop:
-        contents.append({
-            "type": "button",
-            "action": {
-                "type": "message",
-                "label": "🔄 逆方向を検索",
-                "text": f"{to_stop} {from_stop}"  # Swapped
-            },
-            "style": "secondary",
-            "height": "sm",
-            "margin": "none",
-        })
-        contents.append({
-            "type": "separator",
-            "margin": "md",
-            "color": "#e0e0e0",
-        })
 
     # 免責事項テキスト
     contents.append({
@@ -474,7 +451,7 @@ def create_footer(from_stop: str = None, to_stop: str = None) -> Dict:
         "color": "#999999",
         "align": "center",
         "wrap": True,
-        "margin": "md" if from_stop and to_stop else "none",
+        "margin": "none",
     })
 
     return {

@@ -393,10 +393,13 @@ def execute_bus_search(event, from_stop: str, to_stop: str):
                 event,
                 "🌙 本日のバス運行は終了しています。\n翌日の始バスをご案内します。",
                 "バス検索結果",
-                flex_contents
+                flex_contents,
+                from_stop=from_stop,
+                to_stop=to_stop
             )
         else:
-            send_flex_reply(event, "バス検索結果", flex_contents, user_id)
+            send_flex_reply(event, "バス検索結果", flex_contents, user_id,
+                           from_stop=from_stop, to_stop=to_stop)
 
     except BusAPIError as e:
         logger.error(f"Bus API error: {e}")
@@ -879,7 +882,8 @@ def send_text_reply(event, text: str, quick_reply=None, include_default_qr: bool
         logger.error(f"Failed to reply: {e}")
 
 
-def send_flex_reply(event, alt_text: str, contents: dict, user_id: str = None):
+def send_flex_reply(event, alt_text: str, contents: dict, user_id: str = None,
+                    from_stop: str = None, to_stop: str = None):
     """
     Flex Messageを返信（デフォルトQuickReply付き）
 
@@ -888,6 +892,8 @@ def send_flex_reply(event, alt_text: str, contents: dict, user_id: str = None):
         alt_text: 代替テキスト
         contents: Flex Messageの内容（辞書形式）
         user_id: ユーザーID（QuickReply用）
+        from_stop: 出発地（逆方向検索ボタン用）
+        to_stop: 目的地（逆方向検索ボタン用）
     """
     try:
         # user_idが渡されていない場合はeventから取得
@@ -901,8 +907,26 @@ def send_flex_reply(event, alt_text: str, contents: dict, user_id: str = None):
                 contents=FlexContainer.from_dict(contents)
             )
 
-            # デフォルトQuickReplyを作成（ヘルプ + お気に入り）
-            flex_message.quick_reply = create_default_quick_reply(user_id)
+            # QuickReplyを作成（逆方向検索 + ヘルプ + お気に入り）
+            quick_reply_items = []
+
+            # 逆方向検索ボタン（from_stop, to_stopがある場合）
+            if from_stop and to_stop:
+                quick_reply_items.append(
+                    QuickReplyItem(
+                        action=MessageAction(
+                            label="🔄 逆方向を検索",
+                            text=f"{to_stop} {from_stop}"
+                        )
+                    )
+                )
+
+            # デフォルトQuickReplyの項目を追加
+            default_qr = create_default_quick_reply(user_id)
+            if default_qr and default_qr.items:
+                quick_reply_items.extend(default_qr.items)
+
+            flex_message.quick_reply = QuickReply(items=quick_reply_items)
 
             line_bot_api.reply_message(
                 ReplyMessageRequest(
@@ -915,7 +939,8 @@ def send_flex_reply(event, alt_text: str, contents: dict, user_id: str = None):
         logger.error(f"Failed to reply Flex: {e}")
 
 
-def send_text_and_flex_reply(event, text: str, alt_text: str, flex_contents: dict):
+def send_text_and_flex_reply(event, text: str, alt_text: str, flex_contents: dict,
+                             from_stop: str = None, to_stop: str = None):
     """
     テキストメッセージとFlex Messageを同時に返信
 
@@ -924,8 +949,12 @@ def send_text_and_flex_reply(event, text: str, alt_text: str, flex_contents: dic
         text: テキストメッセージ
         alt_text: Flex Messageの代替テキスト
         flex_contents: Flex Messageの内容（辞書形式）
+        from_stop: 出発地（逆方向検索ボタン用）
+        to_stop: 目的地（逆方向検索ボタン用）
     """
     try:
+        user_id = event.source.user_id
+
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             text_message = TextMessage(text=text)
@@ -933,6 +962,28 @@ def send_text_and_flex_reply(event, text: str, alt_text: str, flex_contents: dic
                 alt_text=alt_text,
                 contents=FlexContainer.from_dict(flex_contents)
             )
+
+            # QuickReplyを作成（逆方向検索 + ヘルプ + お気に入り）
+            quick_reply_items = []
+
+            # 逆方向検索ボタン
+            if from_stop and to_stop:
+                quick_reply_items.append(
+                    QuickReplyItem(
+                        action=MessageAction(
+                            label="🔄 逆方向を検索",
+                            text=f"{to_stop} {from_stop}"
+                        )
+                    )
+                )
+
+            # デフォルトQuickReplyの項目を追加
+            default_qr = create_default_quick_reply(user_id)
+            if default_qr and default_qr.items:
+                quick_reply_items.extend(default_qr.items)
+
+            flex_message.quick_reply = QuickReply(items=quick_reply_items)
+
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
@@ -957,10 +1008,10 @@ def create_default_quick_reply(user_id: str = None, include_cancel: bool = False
     """
     items = []
 
-    # 1. ヘルプボタン（最優先）
+    # 1. 使い方ボタン（最優先）
     items.append(
         QuickReplyItem(
-            action=MessageAction(label="❓ ヘルプ", text="ヘルプ")
+            action=MessageAction(label="❓ 使い方", text="使い方")
         )
     )
 
