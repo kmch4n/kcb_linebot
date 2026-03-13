@@ -38,6 +38,7 @@ from message_parser import (
     is_favorite_register_only_command,
     is_nearby_stops_command,
     is_timetable_command,
+    is_data_attribution_command,
     parse_favorite_command,
 )
 from storage import (
@@ -123,7 +124,12 @@ def handle_text_message(event):
         send_timetable_not_implemented(event)
         return
 
-    # 2.9. お気に入りコマンド（ルート付き）
+    # 2.9. データについてコマンド
+    if is_data_attribution_command(user_message):
+        send_data_attribution(event)
+        return
+
+    # 2.10. お気に入りコマンド（ルート付き）
     if is_favorite_command(user_message):
         parsed_fav = parse_favorite_command(user_message)
         if parsed_fav:
@@ -569,9 +575,31 @@ def send_help_message(event):
         QuickReplyItem(action=MessageAction(label="⭐ お気に入り登録", text="お気に入り登録")),
         QuickReplyItem(action=MessageAction(label="📍 周辺バス停", text="周辺バス停")),
         QuickReplyItem(action=MessageAction(label="🕐 時刻表", text="時刻表")),
+        QuickReplyItem(action=MessageAction(label="ℹ️ データについて", text="データについて")),
     ])
 
     send_text_reply(event, help_text, quick_reply=help_quick_reply)
+
+
+def send_data_attribution(event):
+    """
+    公共交通オープンデータの出典・利用規約情報を送信
+
+    Args:
+        event: LINE Webhookイベント
+    """
+    text = (
+        "📋 データについて\n\n"
+        "本botが利用する公共交通データは、公共交通オープンデータセンター"
+        "において提供されるものです。\n\n"
+        "公共交通事業者により提供されたデータを元にしていますが、"
+        "必ずしも正確・完全なものとは限りません。\n\n"
+        "本botの表示内容について、公共交通事業者への"
+        "直接のお問い合わせはご遠慮ください。\n\n"
+        "本botに関するお問い合わせ:\n"
+        "kmhcna@kmchan.jp"
+    )
+    send_text_reply(event, text)
 
 
 def send_nearby_stops_prompt(event):

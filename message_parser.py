@@ -189,6 +189,21 @@ def is_nearby_stops_command(text: str) -> bool:
     return text in keywords
 
 
+def is_data_attribution_command(text: str) -> bool:
+    """
+    データについてコマンドかどうか判定
+
+    Args:
+        text: 判定対象の文字列
+
+    Returns:
+        データについてコマンドの場合True
+    """
+    text = text.strip()
+    keywords = ["データについて", "データ出典", "利用規約"]
+    return text in keywords
+
+
 def is_timetable_command(text: str) -> bool:
     """
     時刻表検索コマンドかどうか判定
