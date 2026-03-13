@@ -6,7 +6,7 @@
 
 QR コードを LINE で読み取って、今すぐ使ってみましょう！
 
-<img src="https://qr-official.line.me/gs/M_584zkpbr_BW.png?oat_content=qr" width="200">
+<img src="docs/images/line_qr.png" width="200">
 
 <a href="https://lin.ee/pysroWR"><img src="https://scdn.line-apps.com/n/line_add_friends/btn/ja.png" alt="友だち追加" height="36" border="0"></a>
 
