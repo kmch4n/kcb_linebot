@@ -1,147 +1,103 @@
-# Kyoto City Bus LINE Bot
+# 🚌 京都市バス検索 LINE Bot
 
-A LINE bot that provides real-time Kyoto City Bus route information. Search for bus routes by entering departure and destination stops and view results in a beautiful Flex Message format.
+出発地と目的地を入力するだけで、京都市バスのルート・時刻・リアルタイム情報を検索できる LINE Bot です 🔍
 
-![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
-![Flask](https://img.shields.io/badge/flask-3.0.0-green.svg)
-![LINE Bot SDK](https://img.shields.io/badge/line--bot--sdk-3.21.0-green.svg)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
+## 📱 友だち追加
 
-> **⚠️ Important**: This bot requires a self-hosted Kyoto City Bus API. Please set up [kcb_api](https://github.com/kmch4n/kcb_api) first before using this bot.
+QR コードを LINE で読み取って、今すぐ使ってみましょう！
 
-## Features
+<img src="https://qr-official.line.me/gs/M_584zkpbr_BW.png?oat_content=qr" width="200">
 
-- 🚌 **Bus Route Search** - Search by departure and destination stops
-- 📍 **Location-based Search** - Find nearby bus stops using your location
-- ⏱️ **Real-time Information** - Display bus arrival time and current position
-- 🎨 **Rich UI** - Beautiful Flex Message format with color-coded routes
-- 📅 **Auto Schedule Detection** - Automatically detects weekday/Saturday/Sunday schedules
+<a href="https://lin.ee/pysroWR"><img src="https://scdn.line-apps.com/n/line_add_friends/btn/ja.png" alt="友だち追加" height="36" border="0"></a>
 
-## Prerequisites
+## ✨ 機能紹介
 
-Before installing this bot, you need to set up the Kyoto City Bus API:
+### 🔎 バス路線検索
 
-1. **Set up kcb_api** - Follow the instructions at [github.com/kmch4n/kcb_api](https://github.com/kmch4n/kcb_api)
-2. **Get LINE credentials** - Create a LINE Bot account at [LINE Developers Console](https://developers.line.biz/console/)
+出発地と目的地のバス停名を送信すると、利用可能なバス路線を検索します。路線番号ごとに色分けされたカードで、出発時刻・到着時刻・所要時間・停車数がひと目で分かります 🎨
 
-## Installation
+<img src="docs/images/image1.jpg" width="300">
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd kcb_linebot
-   ```
+### 📡 リアルタイム情報
 
-2. **Install dependencies**
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
+検索結果にバスの現在位置をリアルタイムで表示！「🚍 停車中」「🚍 走行中」などのステータスと、あと何停留所で到着するかを確認できます。
 
-3. **Configure environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your credentials
-   ```
+<img src="docs/images/image2.jpg" width="300">
 
-## Configuration
+### 📍 位置情報から検索
 
-Edit `.env` file:
+LINE の位置情報を送信すると、周辺 500m 以内のバス停を自動で検索。表示されたバス停をタップするだけで、そこからの路線検索を開始できます 🗺️
 
-```bash
-# LINE Messaging API (Required)
-LINE_CHANNEL_ACCESS_TOKEN=your_token_here
-LINE_CHANNEL_SECRET=your_secret_here
+<img src="docs/images/image3.jpg" width="300">
 
-# Kyoto City Bus API (Required)
-API_KEY=your_api_key_here
-API_BASE_URL=http://localhost:8081/kcb_api
+### ⭐ お気に入り機能
 
-# Server (Optional)
-FLASK_PORT=8083
-FLASK_DEBUG=False
-```
+よく使うルートをお気に入りに登録すると（最大5件）、ワンタップですぐに検索できます！
 
-## Usage
+<img src="docs/images/image4.jpg" width="300">
 
-```bash
-source .venv/bin/activate
-python3 main.py
-```
+### 🌙 深夜の検索
 
-Server starts on `http://localhost:8083`
+夜遅い時間に検索した場合、翌日の始発バスを自動で案内します。
 
-### LINE Webhook Setup
+<img src="docs/images/image6.jpg" width="300">
 
-1. Go to [LINE Developers Console](https://developers.line.biz/console/)
-2. Set Webhook URL: `https://your-domain.com/kcb_linebot/callback`
-3. Enable "Use webhook"
+### ❓ ヘルプ・その他
 
-## How to Use the Bot
+「ヘルプ」と送信すると、使い方の一覧を確認できます。
 
-### Basic Search
+<img src="docs/images/image5.jpg" width="300">
 
-Send bus stop names (in Japanese):
+## 💬 使い方
+
+### ⌨️ テキストで検索
+
+出発地と目的地をスペースで区切って送信します。
+
 ```
 四条河原町 京都駅前
-```
-
-Or with direction indicator:
-```
 四条河原町から京都駅前
 四条河原町→京都駅前
 ```
 
-### Two-step Search
-
-1. Send departure stop only:
-   ```
-   四条河原町
-   ```
-
-2. Bot asks for destination, reply with:
-   ```
-   京都駅前
-   ```
-
-### Location-based Search
-
-1. Share your location in LINE
-2. Select nearby stop from Quick Reply
-3. Enter destination stop
-
-### Real-time Information
-
-- **🔴 Bus Approaching** - 0-3 minutes until departure
-- **✅ On Time** - 4-10 minutes until departure
-- Buses departing in >10 minutes: no real-time info shown
-
-## Project Structure
+出発地だけを送信すると、目的地を聞かれます。
 
 ```
-kcb_linebot/
-├── main.py               # Flask webhook server
-├── config.py             # Configuration management
-├── handlers.py           # LINE message handlers
-├── bus_api.py            # Bus API client
-├── flex_templates.py     # Flex Message templates
-├── message_parser.py     # Message parsing
-├── session.py            # Session management
-└── requirements.txt      # Dependencies
+四条河原町
 ```
 
-## Tech Stack
+### 📍 位置情報で検索
 
-- Python 3.12+
-- Flask 3.0.0
-- LINE Bot SDK 3.21.0
+1. LINE の「＋」ボタンから「位置情報」を送信
+2. 表示された周辺バス停から出発地を選択
+3. 目的地を入力
 
-## License
+### ⭐ お気に入り
 
-MIT License
+| コマンド | 説明 |
+|---|---|
+| `お気に入り一覧` | 登録済みのルートを表示 |
+| `お気に入り登録 出発地 目的地` | ルートを登録 |
+| `お気に入り削除 番号` | 番号を指定して削除 |
 
----
+## ⚠️ 対応エリア・注意事項
 
-**Last Updated**: 2026-01-12
-**Version**: 1.0.0
+- 🏙️ 京都市バスの路線が検索対象です
+- 🕐 表示される時刻は時刻表に基づく推定です（GPS による追跡ではありません）
+- 📅 平日・土曜・日曜祝日のダイヤを自動で判別します
+
+## 📋 公共交通オープンデータについて
+
+本 bot が利用する公共交通データは、[公共交通オープンデータセンター](https://ckan.odpt.org/)において提供されるものです。
+
+公共交通事業者により提供されたデータを元にしていますが、必ずしも正確・完全なものとは限りません。
+
+本 bot の表示内容について、公共交通事業者への直接のお問い合わせはご遠慮ください。
+
+## 📮 お問い合わせ
+
+本 bot に関するお問い合わせ: kmhcna@kmchan.jp
+
+## 🔧 開発者向け
+
+セットアップ・デプロイ手順については [docs/deployment.md](docs/deployment.md) を参照してください。
