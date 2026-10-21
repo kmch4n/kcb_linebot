@@ -31,10 +31,10 @@ Before you begin, make sure you have the following:
 | Component | Version |
 |---|---|
 | Python | 3.12+ |
-| Flask | 3.0.0 |
-| line-bot-sdk | 3.21.0 |
-| python-dotenv | 1.0.0 |
-| requests | 2.31.0+ |
+| Flask | 3.1.3 |
+| line-bot-sdk | 3.26.0 |
+| python-dotenv | 1.2.4 |
+| requests | 2.33.0+ |
 
 ## Step 1: Set Up the Bus API
 

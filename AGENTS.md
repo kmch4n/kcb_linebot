@@ -3,7 +3,7 @@
 ## Project Overview
 Kyoto City Bus route search LINE bot. Users send departure/destination stops and receive bus route info as Flex Messages.
 
-- **Stack**: Python 3.12.3, Flask 3.0.0, line-bot-sdk 3.21.0
+- **Stack**: Python 3.12.3, Flask 3.1.3, line-bot-sdk 3.26.0
 - **Port**: 8083 in production (`FLASK_PORT` in `.env`, systemd managed); the code default is 8000
 - **External API**: [kcb_api](https://github.com/kmch4n/kcb_api) at `localhost:8081/kcb_api`, authenticated with `X-API-Key`
 
