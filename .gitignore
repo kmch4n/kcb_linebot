@@ -1,7 +1,5 @@
 # AI
-.claude/
-.codex/
-CLAUDE.md
+.claude/settings.local.json
 
 # Data
 notes/
